@@ -4,7 +4,7 @@ import AppKit
 struct ContentView: View {
     @State private var notes: [String] = []
     @State private var selectedTab: Int = 0
-    @State private var showSettings = false
+    @State private var showSettingsWindow = false
     @State private var showMenu = false
     
     let savePath = FileManager.default.homeDirectoryForCurrentUser
@@ -32,7 +32,7 @@ struct ContentView: View {
     }
     
     var body: some View {
-        VStack(spacing: 5) { // 🔥 Weniger Abstand zwischen Textfeld, Buttons und Zahnrad
+        VStack(spacing: 10) {
             if notes.isEmpty {
                 Text("Keine Notizen vorhanden")
                     .foregroundColor(.gray)
@@ -42,13 +42,15 @@ struct ContentView: View {
                     ForEach(0..<notes.count, id: \..self) { index in
                         VStack {
                             TextEditor(text: $notes[index])
-                                .padding(10)
-                                .background(RoundedRectangle(cornerRadius: 8).stroke(Color.gray, lineWidth: 1))
+                                .padding(EdgeInsets(top: 16, leading: 12, bottom: 16, trailing: 2)) // 🔥 Mehr Abstand oben & unten
+                                .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .lineSpacing(5) // 🔥 Erhöht den Zeilenabstand
                                 .onChange(of: notes[index]) { _ in
                                     saveNotes()
                                 }
                         }
-                        .padding()
+                        .padding(12) // 🔥 Einheitliches Padding für gleiche Abstände
                         .tabItem {
                             Text(getTabTitle(from: notes[index]))
                         }
@@ -56,7 +58,7 @@ struct ContentView: View {
                     }
                 }
                 .frame(minHeight: 300)
-                .padding(.top, 5) // 🔥 Weniger Abstand oben
+                .padding(.top, 10)
             }
             
             HStack {
@@ -75,22 +77,42 @@ struct ContentView: View {
             
             HStack {
                 Spacer()
-                Menu {
-                    Button("Einstellungen", action: { showSettings.toggle() })
-                    Button("Beenden", action: { NSApplication.shared.terminate(nil) })
-                } label: {
+                Button(action: { showMenu.toggle() }) {
                     Image(systemName: "gear")
                         .padding(5)
                 }
-                .sheet(isPresented: $showSettings) {
-                    SettingsView()
+                .buttonStyle(BorderlessButtonStyle())
+                .popover(isPresented: $showMenu, arrowEdge: .top) {
+                    VStack(alignment: .leading, spacing: 8) {
+                        Button("Einstellungen", action: openSettingsWindow)
+                        Button("Beenden", action: { NSApplication.shared.terminate(nil) })
+                        Divider()
+                        Text("© 2025 Bastian-JS")
+                            .foregroundColor(.gray)
+                            .disabled(true)
+                    }
+                    .padding()
+                    .frame(width: 150)
                 }
             }
         }
-        .frame(width: 300, height: 400)
+        .frame(width: 320, height: 420) // 🔥 Leicht angepasste Größe für besseren Look
         .onDisappear {
             saveNotes()
         }
+    }
+    
+    func openSettingsWindow() {
+        let settingsWindow = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+            styleMask: [.titled, .closable, .resizable],
+            backing: .buffered, defer: false)
+        settingsWindow.center()
+        settingsWindow.isReleasedWhenClosed = false
+        settingsWindow.title = "Einstellungen"
+        settingsWindow.contentView = NSHostingView(rootView: SettingsView())
+        settingsWindow.makeKeyAndOrderFront(nil)
+        NSApp.activate(ignoringOtherApps: true)
     }
     
     func addNote() {
