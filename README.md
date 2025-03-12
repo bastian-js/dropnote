@@ -6,8 +6,7 @@
 - Save and manage notes  
 - Switch between tabs (notes)  
 - Fast full-text search  
-- Auto-save  
-- Dark & Light mode  
+- Auto-save
 - Free & Open Source (non-commercial)  
 
 ## Installation
