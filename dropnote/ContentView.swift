@@ -17,7 +17,6 @@ struct ContentView: View {
             self._notes = State(initialValue: [""])
         }
         
-        // Fenster in die Mitte des Bildschirms setzen
         DispatchQueue.main.async {
             if let window = NSApplication.shared.windows.first {
                 if let screen = NSScreen.main {
@@ -42,16 +41,16 @@ struct ContentView: View {
                     ForEach(0..<notes.count, id: \..self) { index in
                         VStack {
                             TextEditor(text: $notes[index])
-                                .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2   )) // 🔥 Mehr Padding rundum
+                                .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
                                 .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .lineSpacing(6) // 🔥 Erhöht den Zeilenabstand
-                                .font(.system(size: 16)) // 🔥 Größere Schrift
+                                .lineSpacing(6)
+                                .font(.system(size: 16))
                                 .onChange(of: notes[index]) { _ in
                                     saveNotes()
                                 }
                         }
-                        .padding(12) // 🔥 Einheitliches Padding für gleiche Abstände
+                        .padding(12)
                         .tabItem {
                             Text(getTabTitle(from: notes[index]))
                         }
@@ -67,6 +66,7 @@ struct ContentView: View {
                     Label("Neue Notiz", systemImage: "plus")
                 }
                 .buttonStyle(BorderlessButtonStyle())
+                .disabled(notes.count >= 5)
                 
                 Button(action: removeNote) {
                     Label("Löschen", systemImage: "trash")
@@ -97,7 +97,7 @@ struct ContentView: View {
                 }
             }
         }
-        .frame(width: 320, height: 420) // 🔥 Leicht angepasste Größe für besseren Look
+        .frame(width: 320, height: 420)
         .onDisappear {
             saveNotes()
         }
@@ -117,9 +117,11 @@ struct ContentView: View {
     }
     
     func addNote() {
-        notes.append("")
-        selectedTab = notes.count - 1
-        saveNotes()
+        if notes.count < 5 {
+            notes.append("")
+            selectedTab = notes.count - 1
+            saveNotes()
+        }
     }
     
     func removeNote() {
@@ -153,21 +155,22 @@ struct ContentView: View {
                 let data = try Data(contentsOf: savePath)
                 let loadedNotes = try JSONDecoder().decode([String].self, from: data)
                 
-                Swift.print("✅ Notizen erfolgreich geladen: \(loadedNotes)")
+                Swift.print("Notizen erfolgreich geladen: \(loadedNotes)")
                 return loadedNotes
             } else {
-                Swift.print("⚠ Datei existiert nicht, neue wird erstellt.")
+                Swift.print("Datei existiert nicht, neue wird erstellt.")
                 saveNotes()
                 return nil
             }
         } catch {
-            Swift.print("❌ Fehler beim Laden: \(error.localizedDescription)")
+            Swift.print("Fehler beim Laden: \(error.localizedDescription)")
             return nil
         }
     }
     
     func getTabTitle(from text: String) -> String {
         let words = text.split(separator: " ")
-        return words.first.map(String.init) ?? "Neue Notiz"
+        let title = words.first.map(String.init) ?? "New Note"
+        return title.count > 7 ? "New Note" : title
     }
 }
