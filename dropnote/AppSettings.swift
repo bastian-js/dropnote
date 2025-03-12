@@ -1,12 +1,5 @@
-//
-//  AppSettings.swift
-//  dropnote
-//
-//  Created by bastian-js on 12.03.25.
-//
-
-
 import Foundation
+import AppKit
 
 struct AppSettings: Codable {
     var showInDock: Bool
@@ -19,12 +12,18 @@ class SettingsManager {
     
     private init() {
         loadSettings()
+        applyDockSetting()
     }
     
-    var settings = AppSettings(showInDock: true) {
+    private(set) var settings = AppSettings(showInDock: true) {
         didSet {
             saveSettings()
+            applyDockSetting()
         }
+    }
+    
+    func updateSetting(_ newSettings: AppSettings) {
+        self.settings = newSettings
     }
     
     func saveSettings() {
@@ -56,4 +55,10 @@ class SettingsManager {
             print("❌ Fehler beim Laden der Einstellungen: \(error.localizedDescription)")
         }
     }
+    
+    private func applyDockSetting() {
+        let policy: NSApplication.ActivationPolicy = settings.showInDock ? .regular : .accessory
+        NSApplication.shared.setActivationPolicy(policy)
+    }
 }
+

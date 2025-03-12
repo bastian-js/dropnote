@@ -1,10 +1,3 @@
-//
-//  SettingsView.swift
-//  dropnote
-//
-//  Created by bastian-js on 11.03.25.
-//
-
 import SwiftUI
 
 struct SettingsView: View {
@@ -19,8 +12,7 @@ struct SettingsView: View {
                         showInDock = SettingsManager.shared.settings.showInDock
                     }
                     .onChange(of: showInDock) { newValue in
-                        updateDockVisibility(show: newValue)
-                        SettingsManager.shared.settings.showInDock = newValue
+                        SettingsManager.shared.updateSetting(AppSettings(showInDock: newValue))
                     }
             }
             .tabItem {
@@ -44,10 +36,5 @@ struct SettingsView: View {
         .onAppear {
             NSApplication.shared.setActivationPolicy(.regular) // 🔥 Dock öffnen wenn Settings offen
         }
-    }
-    
-    func updateDockVisibility(show: Bool) {
-        let policy: NSApplication.ActivationPolicy = show ? .regular : .accessory
-        NSApplication.shared.setActivationPolicy(policy)
     }
 }

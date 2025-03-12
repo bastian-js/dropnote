@@ -17,6 +17,11 @@ struct ContentView: View {
             self._notes = State(initialValue: [""])
         }
         
+        // Dock-Setting direkt beim Start anwenden
+        let showInDock = SettingsManager.shared.settings.showInDock
+        let policy: NSApplication.ActivationPolicy = showInDock ? .regular : .accessory
+        NSApplication.shared.setActivationPolicy(policy)
+        
         DispatchQueue.main.async {
             if let window = NSApplication.shared.windows.first {
                 if let screen = NSScreen.main {
