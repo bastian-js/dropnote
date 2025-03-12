@@ -24,7 +24,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
-		035E42552D7F9EBE0054EF1D /* dropnote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = dropnote.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		035E42552D7F9EBE0054EF1D /* DropNote.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = DropNote.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		035E42662D7F9EC20054EF1D /* dropnoteTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = dropnoteTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		035E42702D7F9EC20054EF1D /* dropnoteUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = dropnoteUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
@@ -85,7 +85,7 @@
 		035E42562D7F9EBE0054EF1D /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				035E42552D7F9EBE0054EF1D /* dropnote.app */,
+				035E42552D7F9EBE0054EF1D /* DropNote.app */,
 				035E42662D7F9EC20054EF1D /* dropnoteTests.xctest */,
 				035E42702D7F9EC20054EF1D /* dropnoteUITests.xctest */,
 			);
@@ -114,7 +114,7 @@
 			packageProductDependencies = (
 			);
 			productName = dropnote;
-			productReference = 035E42552D7F9EBE0054EF1D /* dropnote.app */;
+			productReference = 035E42552D7F9EBE0054EF1D /* DropNote.app */;
 			productType = "com.apple.product-type.application";
 		};
 		035E42652D7F9EC20054EF1D /* dropnoteTests */ = {
@@ -393,12 +393,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = dropnote/dropnote.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"dropnote/Preview Content\"";
+				DEVELOPMENT_TEAM = SKLQG23R9P;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = dropnote/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = DropNote;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -406,7 +411,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = xyz.bbastian.dropnote;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = DropNote;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
@@ -418,12 +423,17 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = dropnote/dropnote.entitlements;
+				"CODE_SIGN_IDENTITY[sdk=macosx*]" = "Apple Development";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
 				CURRENT_PROJECT_VERSION = 1;
 				DEVELOPMENT_ASSET_PATHS = "\"dropnote/Preview Content\"";
+				DEVELOPMENT_TEAM = SKLQG23R9P;
+				ENABLE_HARDENED_RUNTIME = YES;
 				ENABLE_PREVIEWS = YES;
 				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = dropnote/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = DropNote;
 				INFOPLIST_KEY_NSHumanReadableCopyright = "";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -431,7 +441,7 @@
 				);
 				MARKETING_VERSION = 1.0;
 				PRODUCT_BUNDLE_IDENTIFIER = xyz.bbastian.dropnote;
-				PRODUCT_NAME = "$(TARGET_NAME)";
+				PRODUCT_NAME = DropNote;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 			};
