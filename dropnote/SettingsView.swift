@@ -8,26 +8,30 @@
 import SwiftUI
 
 struct SettingsView: View {
-    @AppStorage("showInDock") private var showInDock: Bool = true
-    
+    @State private var showInDock = SettingsManager.shared.settings.showInDock
+
     var body: some View {
         TabView {
             VStack {
-                Toggle("Symbol im Dock anzeigen", isOn: $showInDock)
+                Toggle("Show DropNote in dock", isOn: $showInDock)
                     .padding()
+                    .onAppear {
+                        showInDock = SettingsManager.shared.settings.showInDock
+                    }
                     .onChange(of: showInDock) { newValue in
                         updateDockVisibility(show: newValue)
+                        SettingsManager.shared.settings.showInDock = newValue
                     }
             }
             .tabItem {
-                Label("Einstellungen", systemImage: "gear")
+                Label("Settings", systemImage: "gear")
             }
             
             VStack {
                 Text("DropNote")
                     .font(.title)
                     .padding(.top)
-                Text("© 2025 Bastian-JS")
+                Text("2025 © bastian-js")
                     .font(.subheadline)
                     .foregroundColor(.gray)
                     .padding(.bottom)

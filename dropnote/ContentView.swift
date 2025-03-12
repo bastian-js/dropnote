@@ -33,7 +33,7 @@ struct ContentView: View {
     var body: some View {
         VStack(spacing: 10) {
             if notes.isEmpty {
-                Text("Keine Notizen vorhanden")
+                Text("No notes available")
                     .foregroundColor(.gray)
                     .padding()
             } else {
@@ -63,13 +63,13 @@ struct ContentView: View {
             
             HStack {
                 Button(action: addNote) {
-                    Label("Neue Notiz", systemImage: "plus")
+                    Label("New Note", systemImage: "plus")
                 }
                 .buttonStyle(BorderlessButtonStyle())
                 .disabled(notes.count >= 5)
                 
                 Button(action: removeNote) {
-                    Label("Löschen", systemImage: "trash")
+                    Label("Delete", systemImage: "trash")
                 }
                 .buttonStyle(BorderlessButtonStyle())
                 .disabled(notes.isEmpty)
@@ -85,10 +85,10 @@ struct ContentView: View {
                 .buttonStyle(BorderlessButtonStyle())
                 .popover(isPresented: $showMenu, arrowEdge: .top) {
                     VStack(alignment: .leading, spacing: 8) {
-                        Button("Einstellungen", action: openSettingsWindow)
-                        Button("Beenden", action: { NSApplication.shared.terminate(nil) })
+                        Button("Settings", action: openSettingsWindow)
+                        Button("Exit", action: { NSApplication.shared.terminate(nil) })
                         Divider()
-                        Text("© 2025 Bastian-JS")
+                        Text("2025 © bastian-js")
                             .foregroundColor(.gray)
                             .disabled(true)
                     }
@@ -110,7 +110,7 @@ struct ContentView: View {
             backing: .buffered, defer: false)
         settingsWindow.center()
         settingsWindow.isReleasedWhenClosed = false
-        settingsWindow.title = "Einstellungen"
+        settingsWindow.title = "Settings"
         settingsWindow.contentView = NSHostingView(rootView: SettingsView())
         settingsWindow.makeKeyAndOrderFront(nil)
         NSApp.activate(ignoringOtherApps: true)
@@ -143,9 +143,9 @@ struct ContentView: View {
             let data = try JSONEncoder().encode(notes)
             try data.write(to: savePath, options: .atomic)
             
-            Swift.print("✅ Notizen gespeichert: \(notes)")
+            Swift.print("Notizen gespeichert: \(notes)")
         } catch {
-            Swift.print("❌ Fehler beim Speichern: \(error.localizedDescription)")
+            Swift.print("Fehler beim Speichern: \(error.localizedDescription)")
         }
     }
     
