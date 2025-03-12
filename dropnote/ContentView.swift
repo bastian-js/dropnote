@@ -42,10 +42,11 @@ struct ContentView: View {
                     ForEach(0..<notes.count, id: \..self) { index in
                         VStack {
                             TextEditor(text: $notes[index])
-                                .padding(EdgeInsets(top: 16, leading: 12, bottom: 16, trailing: 2)) // 🔥 Mehr Abstand oben & unten
+                                .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2   )) // 🔥 Mehr Padding rundum
                                 .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .lineSpacing(5) // 🔥 Erhöht den Zeilenabstand
+                                .lineSpacing(6) // 🔥 Erhöht den Zeilenabstand
+                                .font(.system(size: 16)) // 🔥 Größere Schrift
                                 .onChange(of: notes[index]) { _ in
                                     saveNotes()
                                 }
