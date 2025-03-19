@@ -3,6 +3,7 @@ import AppKit
 
 struct AppSettings: Codable {
     var showInDock: Bool
+    var startOnBoot: Bool
 }
 
 class SettingsManager {
@@ -15,7 +16,7 @@ class SettingsManager {
         applyDockSetting()
     }
     
-    private(set) var settings = AppSettings(showInDock: true) {
+    private(set) var settings = AppSettings(showInDock: true, startOnBoot: false) {
         didSet {
             saveSettings()
             applyDockSetting()
@@ -61,4 +62,3 @@ class SettingsManager {
         NSApplication.shared.setActivationPolicy(policy)
     }
 }
-

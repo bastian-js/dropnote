@@ -35,16 +35,6 @@
 			path = dropnote;
 			sourceTree = "<group>";
 		};
-		035E42692D7F9EC20054EF1D /* dropnoteTests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = dropnoteTests;
-			sourceTree = "<group>";
-		};
-		035E42732D7F9EC20054EF1D /* dropnoteUITests */ = {
-			isa = PBXFileSystemSynchronizedRootGroup;
-			path = dropnoteUITests;
-			sourceTree = "<group>";
-		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -76,8 +66,6 @@
 			isa = PBXGroup;
 			children = (
 				035E42572D7F9EBF0054EF1D /* dropnote */,
-				035E42692D7F9EC20054EF1D /* dropnoteTests */,
-				035E42732D7F9EC20054EF1D /* dropnoteUITests */,
 				035E42562D7F9EBE0054EF1D /* Products */,
 			);
 			sourceTree = "<group>";
@@ -130,9 +118,6 @@
 			dependencies = (
 				035E42682D7F9EC20054EF1D /* PBXTargetDependency */,
 			);
-			fileSystemSynchronizedGroups = (
-				035E42692D7F9EC20054EF1D /* dropnoteTests */,
-			);
 			name = dropnoteTests;
 			packageProductDependencies = (
 			);
@@ -152,9 +137,6 @@
 			);
 			dependencies = (
 				035E42722D7F9EC20054EF1D /* PBXTargetDependency */,
-			);
-			fileSystemSynchronizedGroups = (
-				035E42732D7F9EC20054EF1D /* dropnoteUITests */,
 			);
 			name = dropnoteUITests;
 			packageProductDependencies = (
