@@ -1,4 +1,5 @@
 import SwiftUI
+import AppKit
 
 struct SettingsView: View {
     @State private var showInDock = SettingsManager.shared.settings.showInDock
@@ -12,9 +13,17 @@ struct SettingsView: View {
                     .onAppear {
                         showInDock = SettingsManager.shared.settings.showInDock
                         startOnBoot = SettingsManager.shared.settings.startOnBoot
+                        NSApplication.shared.setActivationPolicy(.regular)
                     }
                     .onChange(of: showInDock) { newValue in
                         SettingsManager.shared.updateSetting(AppSettings(showInDock: newValue, startOnBoot: startOnBoot))
+                        if !newValue {
+                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                if NSApp.keyWindow?.title != "Settings" {
+                                    NSApplication.shared.setActivationPolicy(.accessory)
+                                }
+                            }
+                        }
                     }
                 
                 Toggle("Start app on boot", isOn: $startOnBoot)
@@ -41,8 +50,10 @@ struct SettingsView: View {
             }
         }
         .frame(width: 300, height: 200)
-        .onAppear {
-            NSApplication.shared.setActivationPolicy(.regular)
+        .onDisappear {
+            if !SettingsManager.shared.settings.showInDock {
+                NSApplication.shared.setActivationPolicy(.accessory)
+            }
         }
     }
 }

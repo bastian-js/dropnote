@@ -58,7 +58,7 @@ class SettingsManager {
     }
     
     private func applyDockSetting() {
-        let policy: NSApplication.ActivationPolicy = settings.showInDock ? .regular : .accessory
+        let policy: NSApplication.ActivationPolicy = settings.showInDock || NSApp.keyWindow?.title == "Settings" ? .regular : .accessory
         NSApplication.shared.setActivationPolicy(policy)
     }
 }
