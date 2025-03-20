@@ -10,7 +10,7 @@
 - Free & Open Source (non-commercial)  
 
 ## Installation
-Download the latest version from [GitHub Releases](https://github.com/yourrepo/dropnote/releases) and install it.
+Download the latest version from [GitHub Releases](https://github.com/bastian-js/dropnote/releases) and install it.
 
 ## Contributing
 Pull requests are welcome! 📝  
