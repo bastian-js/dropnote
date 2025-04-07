@@ -13,10 +13,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var popover: NSPopover!
     
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Create menubar symbol
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
         if let button = statusItem.button {
-            button.image = NSImage(systemSymbolName: "note.text", accessibilityDescription: "Notes")
+            button.image = NSImage(named: "MenubarIcon")
+            button.image?.size = NSSize(width: 14, height: 14)
+            button.image?.isTemplate = false
             button.action = #selector(togglePopover(_:))
         }
         
