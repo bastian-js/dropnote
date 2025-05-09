@@ -7,6 +7,7 @@
 
 import Cocoa
 import SwiftUI
+import ServiceManagement
 
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
@@ -25,6 +26,8 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentSize = NSSize(width: 300, height: 400)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: ContentView())
+        
+        applyStartupSetting() // ⬅️ Autostart prüfen & setzen
     }
     
     @objc func togglePopover(_ sender: AnyObject?) {
@@ -34,6 +37,26 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             } else {
                 popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             }
+        }
+    }
+    
+    func applyStartupSetting() {
+        let shouldStartOnBoot = SettingsManager.shared.settings.startOnBoot
+        print("🌀 Startup setting =", shouldStartOnBoot)
+        setLaunchAtLogin(enabled: shouldStartOnBoot)
+    }
+
+    func setLaunchAtLogin(enabled: Bool) {
+        do {
+            if enabled {
+                try SMAppService.mainApp.register()
+                print("✅ App registered for launch at login")
+            } else {
+                try SMAppService.mainApp.unregister()
+                print("⛔️ App unregistered from launch at login")
+            }
+        } catch {
+            print("❌ Autostart error:", error.localizedDescription)
         }
     }
 }
