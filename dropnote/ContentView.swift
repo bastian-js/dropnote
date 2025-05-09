@@ -102,12 +102,12 @@ struct ContentView: View {
                                     .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
                                     .cornerRadius(6)
                                     .contextMenu {
-                                        Button("Edit title") {
+                                        Button("Titel bearbeiten") {
                                             editedTabTitle = notes[index].title
                                             isEditingTabTitle = true
                                             selectedTab = index
                                         }
-                                        Button("Delete note", role: .destructive) {
+                                        Button("Notiz löschen", role: .destructive) {
                                             deleteIndex = index
                                             showDeleteAlert = true
                                         }
@@ -127,16 +127,28 @@ struct ContentView: View {
                     .padding(.vertical, 6)
 
                     if !notes.isEmpty {
-                        TextEditor(text: $notes[selectedTab].text)
-                            .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
-                            .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            .lineSpacing(6)
-                            .font(.system(size: 16))
-                            .onChange(of: notes[selectedTab].text) { _ in
-                                saveNotes()
+                        VStack(alignment: .leading, spacing: 4) {
+                            TextEditor(text: $notes[selectedTab].text)
+                                .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
+                                .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
+                                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                .lineSpacing(6)
+                                .font(.system(size: 16))
+                                .onChange(of: notes[selectedTab].text) { _ in
+                                    saveNotes()
+                                }
+
+                            HStack {
+                                Text("Words: \(notes[selectedTab].text.split { $0.isWhitespace || $0.isNewline }.count)")
+                                    .font(.footnote)
+                                    .foregroundColor(.secondary)
+                                    .padding(.leading, 8)
+                                    .padding(.bottom, 4)
+                                Spacer()
                             }
-                            .padding(.top, 6)
+                        }
+                        .padding(.top, 6)
+                        .padding(.trailing, 10)
                     }
                 }
             }
@@ -173,15 +185,15 @@ struct ContentView: View {
         .onDisappear {
             saveNotes()
         }
-        .alert("Delete note?", isPresented: $showDeleteAlert, presenting: deleteIndex) { index in
-            Button("Delete", role: .destructive) {
+        .alert("Notiz löschen?", isPresented: $showDeleteAlert, presenting: deleteIndex) { index in
+            Button("Löschen", role: .destructive) {
                 notes.remove(at: index)
                 selectedTab = max(0, selectedTab - 1)
                 saveNotes()
             }
-            Button("Cancel", role: .cancel) {}
+            Button("Abbrechen", role: .cancel) {}
         } message: { _ in
-            Text("The note will be removed permanently.")
+            Text("Diese Notiz wird dauerhaft entfernt.")
         }
     }
 
