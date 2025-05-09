@@ -1,8 +1,3 @@
-//
-//  ContentView.swift
-//  dropnote
-//
-
 import SwiftUI
 import AppKit
 
@@ -40,6 +35,9 @@ struct ContentView: View {
     @State private var selectedTab: Int = 0
     @State private var isEditingTabTitle: Bool = false
     @State private var editedTabTitle: String = ""
+    @FocusState private var isTextFieldFocused: Bool
+    @State private var showDeleteAlert: Bool = false
+    @State private var deleteIndex: Int? = nil
 
     let savePath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/DropNote/notes.json")
@@ -78,36 +76,55 @@ struct ContentView: View {
                     .padding()
             } else {
                 VStack(spacing: 0) {
-    HStack(spacing: 6) {
-        ForEach(0..<notes.count, id: \.self) { index in
-            if isEditingTabTitle && selectedTab == index {
-                TextField("", text: $editedTabTitle, onCommit: {
-                    notes[selectedTab].title = editedTabTitle
-                    isEditingTabTitle = false
-                    saveNotes()
-                })
-                .textFieldStyle(PlainTextFieldStyle())
-                .frame(width: 80)
-                .padding(6)
-                .background(Color.gray.opacity(0.2))
-                .cornerRadius(6)
-            } else {
-                Text(notes[index].title)
-                    .padding(6)
-                    .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
-                    .cornerRadius(6)
-                    .simultaneousGesture(TapGesture(count: 2).onEnded {
-                        editedTabTitle = notes[index].title
-                        isEditingTabTitle = true
-                    })
-                    .simultaneousGesture(TapGesture(count: 1).onEnded {
-                        selectedTab = index
-                    })
-            }
-        }
-    }
-    .padding(.horizontal)
-    .padding(.vertical, 6)
+                    HStack(spacing: 6) {
+                        ForEach(0..<notes.count, id: \..self) { index in
+                            if isEditingTabTitle && selectedTab == index {
+                                TextField("", text: $editedTabTitle, onCommit: {
+                                    notes[selectedTab].title = editedTabTitle
+                                    isEditingTabTitle = false
+                                    saveNotes()
+                                })
+                                .focused($isTextFieldFocused)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .padding(6)
+                                .background(Color.gray.opacity(0.2))
+                                .cornerRadius(6)
+                                .onAppear {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        isTextFieldFocused = true
+                                    }
+                                }
+                            } else {
+                                Text(notes[index].title)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .padding(6)
+                                    .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
+                                    .cornerRadius(6)
+                                    .contextMenu {
+                                        Button("Edit title") {
+                                            editedTabTitle = notes[index].title
+                                            isEditingTabTitle = true
+                                            selectedTab = index
+                                        }
+                                        Button("Delete note", role: .destructive) {
+                                            deleteIndex = index
+                                            showDeleteAlert = true
+                                        }
+                                    }
+                                    .onTapGesture(count: 2) {
+                                        editedTabTitle = notes[index].title
+                                        isEditingTabTitle = true
+                                        selectedTab = index
+                                    }
+                                    .onTapGesture {
+                                        selectedTab = index
+                                    }
+                            }
+                        }
+                    }
+                    .padding(.horizontal)
+                    .padding(.vertical, 6)
 
                     if !notes.isEmpty {
                         TextEditor(text: $notes[selectedTab].text)
@@ -131,7 +148,10 @@ struct ContentView: View {
                 .buttonStyle(BorderlessButtonStyle())
                 .disabled(notes.count >= 5)
 
-                Button(action: removeNote) {
+                Button(action: {
+                    deleteIndex = selectedTab
+                    showDeleteAlert = true
+                }) {
                     Label("Delete", systemImage: "trash")
                 }
                 .buttonStyle(BorderlessButtonStyle())
@@ -152,6 +172,16 @@ struct ContentView: View {
         .frame(width: 320, height: 420)
         .onDisappear {
             saveNotes()
+        }
+        .alert("Delete note?", isPresented: $showDeleteAlert, presenting: deleteIndex) { index in
+            Button("Delete", role: .destructive) {
+                notes.remove(at: index)
+                selectedTab = max(0, selectedTab - 1)
+                saveNotes()
+            }
+            Button("Cancel", role: .cancel) {}
+        } message: { _ in
+            Text("The note will be removed permanently.")
         }
     }
 
@@ -179,13 +209,6 @@ struct ContentView: View {
         let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? notes.count + 1
         notes.append(Note(title: "Note \(nextNumber)", text: ""))
         selectedTab = notes.count - 1
-        saveNotes()
-    }
-
-    func removeNote() {
-        guard !notes.isEmpty else { return }
-        notes.remove(at: selectedTab)
-        selectedTab = max(0, selectedTab - 1)
         saveNotes()
     }
 
