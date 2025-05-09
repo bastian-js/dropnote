@@ -38,34 +38,18 @@ struct ContentView: View {
     @FocusState private var isTextFieldFocused: Bool
     @State private var showDeleteAlert: Bool = false
     @State private var deleteIndex: Int? = nil
+    @State private var showWordCounter: Bool = SettingsManager.shared.settings.showWordCounter
 
-    let savePath = FileManager.default.homeDirectoryForCurrentUser
+    private let savePath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/DropNote/notes.json")
-
-    let controller = ContentViewController()
+    private let controller = ContentViewController()
 
     init() {
-        if let loadedNotes = loadNotes() {
-            self._notes = State(initialValue: loadedNotes)
-        } else {
-            self._notes = State(initialValue: [])
+        if let loaded = loadNotes() {
+            _notes = State(initialValue: loaded)
         }
-
         let showInDock = SettingsManager.shared.settings.showInDock
-        let policy: NSApplication.ActivationPolicy = showInDock ? .regular : .accessory
-        NSApplication.shared.setActivationPolicy(policy)
-
-        DispatchQueue.main.async {
-            if let window = NSApplication.shared.windows.first {
-                if let screen = NSScreen.main {
-                    let screenFrame = screen.frame
-                    let windowSize = window.frame.size
-                    let xPos = (screenFrame.width - windowSize.width) / 2
-                    let yPos = (screenFrame.height - windowSize.height) / 2
-                    window.setFrameOrigin(NSPoint(x: xPos, y: yPos))
-                }
-            }
-        }
+        NSApplication.shared.setActivationPolicy(showInDock ? .regular : .accessory)
     }
 
     var body: some View {
@@ -77,10 +61,10 @@ struct ContentView: View {
             } else {
                 VStack(spacing: 0) {
                     HStack(spacing: 6) {
-                        ForEach(0..<notes.count, id: \..self) { index in
+                        ForEach(Array(notes.enumerated()), id: \ .1.id) { index, note in
                             if isEditingTabTitle && selectedTab == index {
                                 TextField("", text: $editedTabTitle, onCommit: {
-                                    notes[selectedTab].title = editedTabTitle
+                                    notes[index].title = editedTabTitle
                                     isEditingTabTitle = false
                                     saveNotes()
                                 })
@@ -95,25 +79,25 @@ struct ContentView: View {
                                     }
                                 }
                             } else {
-                                Text(notes[index].title)
+                                Text(note.title)
                                     .lineLimit(1)
                                     .truncationMode(.tail)
                                     .padding(6)
                                     .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
                                     .cornerRadius(6)
                                     .contextMenu {
-                                        Button("Titel bearbeiten") {
-                                            editedTabTitle = notes[index].title
+                                        Button("Edit Title") {
+                                            editedTabTitle = note.title
                                             isEditingTabTitle = true
                                             selectedTab = index
                                         }
-                                        Button("Notiz löschen", role: .destructive) {
+                                        Button("Delete Note", role: .destructive) {
                                             deleteIndex = index
                                             showDeleteAlert = true
                                         }
                                     }
                                     .onTapGesture(count: 2) {
-                                        editedTabTitle = notes[index].title
+                                        editedTabTitle = note.title
                                         isEditingTabTitle = true
                                         selectedTab = index
                                     }
@@ -138,13 +122,15 @@ struct ContentView: View {
                                     saveNotes()
                                 }
 
-                            HStack {
-                                Text("Words: \(notes[selectedTab].text.split { $0.isWhitespace || $0.isNewline }.count)")
-                                    .font(.footnote)
-                                    .foregroundColor(.secondary)
-                                    .padding(.leading, 8)
-                                    .padding(.bottom, 4)
-                                Spacer()
+                            if showWordCounter {
+                                HStack {
+                                    Text("Words: \(notes[selectedTab].text.split { $0.isWhitespace || $0.isNewline }.count)")
+                                        .font(.footnote)
+                                        .foregroundColor(.secondary)
+                                        .padding(.leading, 8)
+                                        .padding(.bottom, 4)
+                                    Spacer()
+                                }
                             }
                         }
                         .padding(.top, 6)
@@ -185,33 +171,30 @@ struct ContentView: View {
         .onDisappear {
             saveNotes()
         }
-        .alert("Notiz löschen?", isPresented: $showDeleteAlert, presenting: deleteIndex) { index in
-            Button("Löschen", role: .destructive) {
+        .alert("Delete note?", isPresented: $showDeleteAlert, presenting: deleteIndex) { index in
+            Button("Delete", role: .destructive) {
                 notes.remove(at: index)
                 selectedTab = max(0, selectedTab - 1)
                 saveNotes()
             }
-            Button("Abbrechen", role: .cancel) {}
+            Button("Cancel", role: .cancel) {}
         } message: { _ in
-            Text("Diese Notiz wird dauerhaft entfernt.")
+            Text("This note will be deleted permanently")
         }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsChanged")), perform: { _ in
+            showWordCounter = SettingsManager.shared.settings.showWordCounter
+        })
     }
 
     func showNativeMenu() {
         let menu = NSMenu()
-
         let settingsItem = NSMenuItem(title: "Settings", action: #selector(controller.openSettings(_:)), keyEquivalent: "")
         settingsItem.target = controller
-        settingsItem.isEnabled = true
         menu.addItem(settingsItem)
-
-        menu.addItem(NSMenuItem.separator())
-
+        menu.addItem(.separator())
         let quitItem = NSMenuItem(title: "Quit DropNote", action: #selector(controller.quitApp(_:)), keyEquivalent: "q")
         quitItem.target = controller
-        quitItem.isEnabled = true
         menu.addItem(quitItem)
-
         let mouseLocation = NSEvent.mouseLocation
         menu.popUp(positioning: nil, at: mouseLocation, in: nil)
     }

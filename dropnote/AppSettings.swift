@@ -4,36 +4,37 @@ import AppKit
 struct AppSettings: Codable {
     var showInDock: Bool
     var startOnBoot: Bool
+    var showWordCounter: Bool
 }
 
 class SettingsManager {
     static let shared = SettingsManager()
     private let settingsPath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/DropNote/settings.json")
-    
+
     private init() {
         loadSettings()
         applyDockSetting()
     }
-    
-    private(set) var settings = AppSettings(showInDock: true, startOnBoot: false) {
+
+    private(set) var settings = AppSettings(showInDock: true, startOnBoot: false, showWordCounter: true) {
         didSet {
             saveSettings()
             applyDockSetting()
         }
     }
-    
+
     func updateSetting(_ newSettings: AppSettings) {
         self.settings = newSettings
     }
-    
+
     func saveSettings() {
         do {
             let folderURL = settingsPath.deletingLastPathComponent()
             if !FileManager.default.fileExists(atPath: folderURL.path) {
                 try FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
             }
-            
+
             let data = try JSONEncoder().encode(settings)
             try data.write(to: settingsPath, options: .atomic)
             print("✅ Einstellungen gespeichert: \(settings)")
@@ -41,7 +42,7 @@ class SettingsManager {
             print("❌ Fehler beim Speichern der Einstellungen: \(error.localizedDescription)")
         }
     }
-    
+
     func loadSettings() {
         do {
             if FileManager.default.fileExists(atPath: settingsPath.path) {
@@ -56,7 +57,7 @@ class SettingsManager {
             print("❌ Fehler beim Laden der Einstellungen: \(error.localizedDescription)")
         }
     }
-    
+
     private func applyDockSetting() {
         let policy: NSApplication.ActivationPolicy = settings.showInDock || NSApp.keyWindow?.title == "Settings" ? .regular : .accessory
         NSApplication.shared.setActivationPolicy(policy)
