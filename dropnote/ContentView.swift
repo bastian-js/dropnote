@@ -1,10 +1,12 @@
 import SwiftUI
 import AppKit
+import UniformTypeIdentifiers
 
 struct Note: Codable, Identifiable {
     var id = UUID()
     var title: String
     var text: String
+    var images: [String] = []
 }
 
 class ContentViewController: NSObject {
@@ -42,6 +44,10 @@ struct ContentView: View {
     @State private var searchText: String = ""
     @State private var isSearching: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
+    @State private var showPreview: Bool = false
+
+    private let notesDirectory = FileManager.default.homeDirectoryForCurrentUser
+        .appendingPathComponent("Library/Application Support/DropNote/Notes")
 
     private let savePath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/DropNote/notes.json")
@@ -69,6 +75,7 @@ struct ContentView: View {
         if let loaded = loadNotes() {
             _notes = State(initialValue: loaded)
         }
+        try? FileManager.default.createDirectory(at: notesDirectory, withIntermediateDirectories: true)
         let showInDock = SettingsManager.shared.settings.showInDock
         NSApplication.shared.setActivationPolicy(showInDock ? .regular : .accessory)
     }
@@ -121,48 +128,6 @@ struct ContentView: View {
             } else {
                 VStack(spacing: 0) {
                     HStack(spacing: 6) {
-<<<<<<< HEAD
-                        ForEach(Array(notes.prefix(4).enumerated()), id: \ .1.id) { index, note in
-                            tabButton(for: note, index: index)
-                        }
-
-                        if notes.count > 4 {
-                            Menu {
-    ForEach(notes.indices.dropFirst(4), id: \.self) { i in
-        VStack(spacing: 0) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(notes[i].title)
-                    .font(.headline)
-                    .foregroundColor(.primary)
-                Text(notes[i].text.split(separator: " ").prefix(4).joined(separator: " "))
-                    .font(.caption)
-                    .foregroundColor(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
-            .onTapGesture {
-                selectedTab = i
-            }
-            if i != notes.indices.dropFirst(4).last {
-                Divider()
-            }
-        }
-    }
-} label: {
-    Text("…")
-        .font(.system(size: 13, weight: .semibold))
-        .foregroundColor(.primary)
-        .frame(minWidth: 64, maxHeight: .infinity)
-        .background(selectedTab >= 4 ? Color.accentColor.opacity(0.3) : Color.gray.opacity(0.15))
-        .cornerRadius(6)
-        .overlay(
-            RoundedRectangle(cornerRadius: 6)
-                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
-        )
-        .contentShape(Rectangle())
-}
-                            .menuStyle(BorderlessButtonMenuStyle())
-=======
                         ForEach(filteredIndices, id: \.self) { index in
                             let note = notes[index]
                             if isEditingTabTitle && selectedTab == index {
@@ -208,7 +173,6 @@ struct ContentView: View {
                                         selectedTab = index
                                     }
                             }
->>>>>>> 997b08489ccc3fd6397894e5db46e8b85cfb42ee
                         }
                     }
                     .padding(.horizontal)
@@ -216,15 +180,36 @@ struct ContentView: View {
 
                     if let current = activeIndex {
                         VStack(alignment: .leading, spacing: 4) {
-                            TextEditor(text: $notes[current].text)
-                                .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
+                            if showPreview {
+                                ScrollView {
+                                    markdownText(notes[current].text)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    ForEach(notes[current].images, id: \.self) { img in
+                                        let url = notesDirectory.appendingPathComponent(notes[current].id.uuidString).appendingPathComponent(img)
+                                        if let nsimg = NSImage(contentsOf: url) {
+                                            Image(nsImage: nsimg)
+                                                .resizable()
+                                                .scaledToFit()
+                                        }
+                                    }
+                                }
+                                .padding(16)
                                 .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                .lineSpacing(6)
-                                .font(.system(size: 16))
-                                .onChange(of: notes[current].text) { _ in
-                                    saveNotes()
-                                }
+                            } else {
+                                TextEditor(text: $notes[current].text)
+                                    .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
+                                    .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
+                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                                    .lineSpacing(6)
+                                    .font(.system(size: 16))
+                                    .onChange(of: notes[current].text) { _ in
+                                        saveNotes()
+                                    }
+                                    .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
+                                        handleDrop(providers: providers, index: current)
+                                    }
+                            }
 
                             if showWordCounter {
                                 HStack {
@@ -247,11 +232,17 @@ struct ContentView: View {
                 }
             }
 
-            HStack {
+            HStack(spacing: 12) {
                 Button(action: addNote) {
                     Label("New Note", systemImage: "plus")
                 }
                 .buttonStyle(BorderlessButtonStyle())
+
+                Button(action: insertImage) {
+                    Label("Add Image", systemImage: "photo")
+                }
+                .buttonStyle(BorderlessButtonStyle())
+                .disabled(activeIndex == nil)
 
                 Button(action: {
                     deleteIndex = activeIndex ?? selectedTab
@@ -261,10 +252,6 @@ struct ContentView: View {
                 }
                 .buttonStyle(BorderlessButtonStyle())
                 .disabled(notes.isEmpty)
-                            
-                            }
-                            .padding(.bottom, 5)
-
 
                 Button(action: {
                     editedTabTitle = notes[selectedTab].title
@@ -274,6 +261,11 @@ struct ContentView: View {
                 }
                 .buttonStyle(BorderlessButtonStyle())
                 .disabled(notes.isEmpty)
+                Spacer()
+                Toggle("Preview", isOn: $showPreview)
+                    .toggleStyle(SwitchToggleStyle())
+                    .frame(width: 100)
+            }
             .padding(.bottom, 5)
 
             HStack {
@@ -368,7 +360,10 @@ struct ContentView: View {
 
     func addNote() {
         let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? notes.count + 1
-        notes.append(Note(title: "Note \(nextNumber)", text: ""))
+        let newNote = Note(title: "Note \(nextNumber)", text: "")
+        notes.append(newNote)
+        let folder = notesDirectory.appendingPathComponent(newNote.id.uuidString)
+        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         selectedTab = notes.count - 1
         saveNotes()
     }
@@ -376,6 +371,10 @@ struct ContentView: View {
     func saveNotes() {
         let folderURL = savePath.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
+        for note in notes {
+            let folder = notesDirectory.appendingPathComponent(note.id.uuidString)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+        }
         if let data = try? JSONEncoder().encode(notes) {
             try? data.write(to: savePath)
         }
@@ -388,5 +387,75 @@ struct ContentView: View {
             return nil
         }
         return decoded
+    }
+
+    /// Very small Markdown renderer for preview mode
+    func markdownText(_ text: String) -> Text {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        var result = Text("")
+        for (i, line) in lines.enumerated() {
+            var t: Text
+            if line.hasPrefix("## ") {
+                t = Text(String(line.dropFirst(3))).font(.title2).bold()
+            } else if line.hasPrefix("# ") {
+                t = Text(String(line.dropFirst(2))).font(.title).bold()
+            } else {
+                t = Text(String(line))
+            }
+            result = result + t
+            if i < lines.count - 1 { result = result + Text("\n") }
+        }
+        return result
+    }
+
+    func insertImage() {
+        guard let current = activeIndex else { return }
+        let panel = NSOpenPanel()
+        panel.allowedFileTypes = NSImage.imageTypes
+        panel.allowsMultipleSelection = false
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            let folder = notesDirectory.appendingPathComponent(notes[current].id.uuidString)
+            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+            let dest = folder.appendingPathComponent(url.lastPathComponent)
+            do {
+                if FileManager.default.fileExists(atPath: dest.path) {
+                    try FileManager.default.removeItem(at: dest)
+                }
+                try FileManager.default.copyItem(at: url, to: dest)
+                notes[current].images.append(url.lastPathComponent)
+                saveNotes()
+            } catch {
+                print("Failed to copy image:", error.localizedDescription)
+            }
+        }
+    }
+
+    func handleDrop(providers: [NSItemProvider], index: Int) -> Bool {
+        for provider in providers {
+            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
+                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { (item, error) in
+                    guard let data = item as? Data,
+                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
+                    DispatchQueue.main.async {
+                        let folder = notesDirectory.appendingPathComponent(notes[index].id.uuidString)
+                        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+                        let dest = folder.appendingPathComponent(url.lastPathComponent)
+                        do {
+                            if FileManager.default.fileExists(atPath: dest.path) {
+                                try FileManager.default.removeItem(at: dest)
+                            }
+                            try FileManager.default.copyItem(at: url, to: dest)
+                            notes[index].images.append(url.lastPathComponent)
+                            saveNotes()
+                        } catch {
+                            print("Drop copy failed", error.localizedDescription)
+                        }
+                    }
+                }
+                return true
+            }
+        }
+        return false
     }
 }
