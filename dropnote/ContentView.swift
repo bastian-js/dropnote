@@ -158,15 +158,10 @@ struct ContentView: View {
                                 selectedTab = index
                             }
                     }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 4) // weniger vertikal
-
-            // Notiztext & Wortzähler
-            if filteredIndices.isEmpty {
-                Text("No notes available")
-                    .foregroundColor(.gray)
+                                    markdownText(notes[current].text)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+            HStack(spacing: 12) {
+                Spacer()
                     .padding()
             } else {
                 VStack(spacing: 0) {
@@ -388,6 +383,25 @@ struct ContentView: View {
             return nil
         }
         return decoded
+    }
+
+    /// Very small Markdown renderer for preview mode
+    func markdownText(_ text: String) -> Text {
+        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
+        var result = Text("")
+        for (i, line) in lines.enumerated() {
+            var t: Text
+            if line.hasPrefix("## ") {
+                t = Text(String(line.dropFirst(3))).font(.title2).bold()
+            } else if line.hasPrefix("# ") {
+                t = Text(String(line.dropFirst(2))).font(.title).bold()
+            } else {
+                t = Text(String(line))
+            }
+            result = result + t
+            if i < lines.count - 1 { result = result + Text("\n") }
+        }
+        return result
     }
 
     func insertImage() {
