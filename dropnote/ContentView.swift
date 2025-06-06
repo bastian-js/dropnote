@@ -81,8 +81,8 @@ struct ContentView: View {
     }
 
     var body: some View {
-        VStack(spacing: 6) { // weniger Abstand insgesamt
-            // Suchfeld oben mit reduziertem Padding
+        VStack(spacing: 6) {
+            // Suchfeld oben
             HStack {
                 if isSearching {
                     TextField("Search", text: $searchText)
@@ -161,103 +161,51 @@ struct ContentView: View {
                 }
             }
             .padding(.horizontal)
-            .padding(.vertical, 4) // weniger vertikal
+            .padding(.vertical, 4)
 
-            // Notiztext & Wortzähler
+            // Notizbereich mit Vorschau und Editor
             if filteredIndices.isEmpty {
                 Text("No notes available")
                     .foregroundColor(.gray)
                     .padding()
             } else {
-                VStack(spacing: 0) {
-                    HStack(spacing: 6) {
-                        ForEach(filteredIndices, id: \.self) { index in
-                            let note = notes[index]
-                            if isEditingTabTitle && selectedTab == index {
-                                TextField("", text: $editedTabTitle, onCommit: {
-                                    notes[index].title = editedTabTitle
-                                    isEditingTabTitle = false
-                                    saveNotes()
-                                })
-                                .focused($isTextFieldFocused)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(6)
-                                .background(Color.gray.opacity(0.2))
-                                .cornerRadius(6)
-                                .onAppear {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        isTextFieldFocused = true
+                if let current = activeIndex {
+                    VStack(alignment: .leading, spacing: 4) {
+                        if showPreview {
+                            ScrollView {
+                                if let attr = try? AttributedString(markdown: notes[current].text) {
+                                    Text(attr)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                } else {
+                                    Text(notes[current].text)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                }
+                                ForEach(notes[current].images, id: \.self) { img in
+                                    let url = notesDirectory.appendingPathComponent(notes[current].id.uuidString).appendingPathComponent(img)
+                                    if let nsimg = NSImage(contentsOf: url) {
+                                        Image(nsImage: nsimg)
+                                            .resizable()
+                                            .scaledToFit()
                                     }
                                 }
-                            } else {
-                                Text(note.title)
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                    .padding(6)
-                                    .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
-                                    .cornerRadius(6)
-                                    .contextMenu {
-                                        Button("Edit Title") {
-                                            editedTabTitle = note.title
-                                            isEditingTabTitle = true
-                                            selectedTab = index
-                                        }
-                                        Button("Delete Note", role: .destructive) {
-                                            deleteIndex = index
-                                            showDeleteAlert = true
-                                        }
-                                    }
-                                    .onTapGesture(count: 2) {
-                                        editedTabTitle = note.title
-                                        isEditingTabTitle = true
-                                        selectedTab = index
-                                    }
-                                    .onTapGesture {
-                                        selectedTab = index
-                                    }
                             }
-                        }
-                    }
-                    .padding(.horizontal)
-                    .padding(.vertical, 6)
-
-                    if let current = activeIndex {
-                        VStack(alignment: .leading, spacing: 4) {
-                            if showPreview {
-                                ScrollView {
-                                    if let attr = try? AttributedString(markdown: notes[current].text) {
-                                        Text(attr)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                    } else {
-                                        Text(notes[current].text)
-                                            .frame(maxWidth: .infinity, alignment: .leading)
-                                    }
-                                    ForEach(notes[current].images, id: \.self) { img in
-                                        let url = notesDirectory.appendingPathComponent(notes[current].id.uuidString).appendingPathComponent(img)
-                                        if let nsimg = NSImage(contentsOf: url) {
-                                            Image(nsImage: nsimg)
-                                                .resizable()
-                                                .scaledToFit()
-                                        }
-                                    }
-                                }
-                                .padding(16)
+                            .padding(16)
+                            .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        } else {
+                            TextEditor(text: $notes[current].text)
+                                .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
                                 .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                            } else {
-                                TextEditor(text: $notes[current].text)
-                                    .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
-                                    .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
-                                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                                    .lineSpacing(6)
-                                    .font(.system(size: 16))
-                                    .onChange(of: notes[current].text) { _ in
-                                        saveNotes()
-                                    }
-                                    .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
-                                        handleDrop(providers: providers, index: current)
-                                    }
-                            }
+                                .lineSpacing(6)
+                                .font(.system(size: 16))
+                                .onChange(of: notes[current].text) { _ in
+                                    saveNotes()
+                                }
+                                .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
+                                    handleDrop(providers: providers, index: current)
+                                }
+                        }
 
                         if showWordCounter {
                             HStack {
@@ -269,17 +217,13 @@ struct ContentView: View {
                                 Spacer()
                             }
                         }
-                    } else {
-                        Text("No results")
-                            .foregroundColor(.gray)
-                            .padding()
                     }
+                    .padding(.top, 6)
+                    .padding(.trailing, 10)
                 }
-                .padding(.top, 6)
-                .padding(.trailing, 10)
             }
 
-            // Buttons
+            // Buttons unten
             HStack {
                 Button(action: addNote) {
                     Label("New Note", systemImage: "plus")
@@ -300,6 +244,7 @@ struct ContentView: View {
                 }
                 .buttonStyle(BorderlessButtonStyle())
                 .disabled(notes.isEmpty)
+
                 Button(action: {
                     editedTabTitle = notes[selectedTab].title
                     isEditingTabTitle = true
@@ -343,8 +288,6 @@ struct ContentView: View {
             showWordCounter = SettingsManager.shared.settings.showWordCounter
         })
     }
-
-
 
     func showNativeMenu() {
         let menu = NSMenu()
@@ -393,7 +336,7 @@ struct ContentView: View {
     func insertImage() {
         guard let current = activeIndex else { return }
         let panel = NSOpenPanel()
-        panel.allowedFileTypes = NSImage.imageTypes
+        panel.allowedContentTypes = [UTType.image]
         panel.allowsMultipleSelection = false
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
