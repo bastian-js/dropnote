@@ -39,10 +39,31 @@ struct ContentView: View {
     @State private var showDeleteAlert: Bool = false
     @State private var deleteIndex: Int? = nil
     @State private var showWordCounter: Bool = SettingsManager.shared.settings.showWordCounter
+    @State private var searchText: String = ""
+    @State private var isSearching: Bool = false
+    @FocusState private var isSearchFieldFocused: Bool
 
     private let savePath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/DropNote/notes.json")
     private let controller = ContentViewController()
+
+    private var filteredIndices: [Int] {
+        if searchText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return Array(notes.indices)
+        }
+        let q = searchText.lowercased()
+        return notes.indices.filter { i in
+            notes[i].title.lowercased().contains(q) ||
+            notes[i].text.lowercased().contains(q)
+        }
+    }
+
+    private var activeIndex: Int? {
+        if filteredIndices.contains(selectedTab) {
+            return selectedTab
+        }
+        return filteredIndices.first
+    }
 
     init() {
         if let loaded = loadNotes() {
@@ -54,13 +75,53 @@ struct ContentView: View {
 
     var body: some View {
         VStack(spacing: 10) {
-            if notes.isEmpty {
+            HStack {
+                if isSearching {
+                    TextField("Search", text: $searchText)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .transition(.opacity)
+                        .focused($isSearchFieldFocused)
+                        .onChange(of: isSearchFieldFocused) { focused in
+                            if !focused && searchText.isEmpty {
+                                withAnimation { isSearching = false }
+                            }
+                        }
+                        .onAppear {
+                            DispatchQueue.main.async {
+                                self.isSearchFieldFocused = true
+                            }
+                        }
+                } else {
+                    Button(action: {
+                        withAnimation { isSearching = true }
+                    }) {
+                        Image(systemName: "magnifyingglass")
+                            .padding(6)
+                    }
+                    .buttonStyle(PlainButtonStyle())
+                }
+            }
+            .padding(.horizontal)
+            Button(action: {
+                withAnimation { isSearching = true }
+                DispatchQueue.main.async {
+                    self.isSearchFieldFocused = true
+                }
+            }) {
+                EmptyView()
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .frame(width: 0, height: 0)
+            .opacity(0)
+
+            if filteredIndices.isEmpty {
                 Text("No notes available")
                     .foregroundColor(.gray)
                     .padding()
             } else {
                 VStack(spacing: 0) {
                     HStack(spacing: 6) {
+<<<<<<< HEAD
                         ForEach(Array(notes.prefix(4).enumerated()), id: \ .1.id) { index, note in
                             tabButton(for: note, index: index)
                         }
@@ -101,26 +162,73 @@ struct ContentView: View {
         .contentShape(Rectangle())
 }
                             .menuStyle(BorderlessButtonMenuStyle())
+=======
+                        ForEach(filteredIndices, id: \.self) { index in
+                            let note = notes[index]
+                            if isEditingTabTitle && selectedTab == index {
+                                TextField("", text: $editedTabTitle, onCommit: {
+                                    notes[index].title = editedTabTitle
+                                    isEditingTabTitle = false
+                                    saveNotes()
+                                })
+                                .focused($isTextFieldFocused)
+                                .textFieldStyle(PlainTextFieldStyle())
+                                .padding(6)
+                                .background(Color.gray.opacity(0.2))
+                                .cornerRadius(6)
+                                .onAppear {
+                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                                        isTextFieldFocused = true
+                                    }
+                                }
+                            } else {
+                                Text(note.title)
+                                    .lineLimit(1)
+                                    .truncationMode(.tail)
+                                    .padding(6)
+                                    .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
+                                    .cornerRadius(6)
+                                    .contextMenu {
+                                        Button("Edit Title") {
+                                            editedTabTitle = note.title
+                                            isEditingTabTitle = true
+                                            selectedTab = index
+                                        }
+                                        Button("Delete Note", role: .destructive) {
+                                            deleteIndex = index
+                                            showDeleteAlert = true
+                                        }
+                                    }
+                                    .onTapGesture(count: 2) {
+                                        editedTabTitle = note.title
+                                        isEditingTabTitle = true
+                                        selectedTab = index
+                                    }
+                                    .onTapGesture {
+                                        selectedTab = index
+                                    }
+                            }
+>>>>>>> 997b08489ccc3fd6397894e5db46e8b85cfb42ee
                         }
                     }
                     .padding(.horizontal)
                     .padding(.vertical, 6)
 
-                    if !notes.isEmpty {
+                    if let current = activeIndex {
                         VStack(alignment: .leading, spacing: 4) {
-                            TextEditor(text: $notes[selectedTab].text)
+                            TextEditor(text: $notes[current].text)
                                 .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
                                 .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
                                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                                 .lineSpacing(6)
                                 .font(.system(size: 16))
-                                .onChange(of: notes[selectedTab].text) { _ in
+                                .onChange(of: notes[current].text) { _ in
                                     saveNotes()
                                 }
 
                             if showWordCounter {
                                 HStack {
-                                    Text("Words: \(notes[selectedTab].text.split { $0.isWhitespace || $0.isNewline }.count)")
+                                    Text("Words: \(notes[current].text.split { $0.isWhitespace || $0.isNewline }.count)")
                                         .font(.footnote)
                                         .foregroundColor(.secondary)
                                         .padding(.leading, 8)
@@ -131,6 +239,10 @@ struct ContentView: View {
                         }
                         .padding(.top, 6)
                         .padding(.trailing, 10)
+                    } else {
+                        Text("No results")
+                            .foregroundColor(.gray)
+                            .padding()
                     }
                 }
             }
@@ -142,7 +254,7 @@ struct ContentView: View {
                 .buttonStyle(BorderlessButtonStyle())
 
                 Button(action: {
-                    deleteIndex = selectedTab
+                    deleteIndex = activeIndex ?? selectedTab
                     showDeleteAlert = true
                 }) {
                     Label("Delete", systemImage: "trash")
