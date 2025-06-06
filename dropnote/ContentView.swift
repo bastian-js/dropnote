@@ -61,50 +61,46 @@ struct ContentView: View {
             } else {
                 VStack(spacing: 0) {
                     HStack(spacing: 6) {
-                        ForEach(Array(notes.enumerated()), id: \ .1.id) { index, note in
-                            if isEditingTabTitle && selectedTab == index {
-                                TextField("", text: $editedTabTitle, onCommit: {
-                                    notes[index].title = editedTabTitle
-                                    isEditingTabTitle = false
-                                    saveNotes()
-                                })
-                                .focused($isTextFieldFocused)
-                                .textFieldStyle(PlainTextFieldStyle())
-                                .padding(6)
-                                .background(Color.gray.opacity(0.2))
-                                .cornerRadius(6)
-                                .onAppear {
-                                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                        isTextFieldFocused = true
-                                    }
-                                }
-                            } else {
-                                Text(note.title)
-                                    .lineLimit(1)
-                                    .truncationMode(.tail)
-                                    .padding(6)
-                                    .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
-                                    .cornerRadius(6)
-                                    .contextMenu {
-                                        Button("Edit Title") {
-                                            editedTabTitle = note.title
-                                            isEditingTabTitle = true
-                                            selectedTab = index
-                                        }
-                                        Button("Delete Note", role: .destructive) {
-                                            deleteIndex = index
-                                            showDeleteAlert = true
-                                        }
-                                    }
-                                    .onTapGesture(count: 2) {
-                                        editedTabTitle = note.title
-                                        isEditingTabTitle = true
-                                        selectedTab = index
-                                    }
-                                    .onTapGesture {
-                                        selectedTab = index
-                                    }
-                            }
+                        ForEach(Array(notes.prefix(4).enumerated()), id: \ .1.id) { index, note in
+                            tabButton(for: note, index: index)
+                        }
+
+                        if notes.count > 4 {
+                            Menu {
+    ForEach(notes.indices.dropFirst(4), id: \.self) { i in
+        VStack(spacing: 0) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(notes[i].title)
+                    .font(.headline)
+                    .foregroundColor(.primary)
+                Text(notes[i].text.split(separator: " ").prefix(4).joined(separator: " "))
+                    .font(.caption)
+                    .foregroundColor(.secondary)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                selectedTab = i
+            }
+            if i != notes.indices.dropFirst(4).last {
+                Divider()
+            }
+        }
+    }
+} label: {
+    Text("…")
+        .font(.system(size: 13, weight: .semibold))
+        .foregroundColor(.primary)
+        .frame(minWidth: 64, maxHeight: .infinity)
+        .background(selectedTab >= 4 ? Color.accentColor.opacity(0.3) : Color.gray.opacity(0.15))
+        .cornerRadius(6)
+        .overlay(
+            RoundedRectangle(cornerRadius: 6)
+                .stroke(Color.gray.opacity(0.3), lineWidth: 1)
+        )
+        .contentShape(Rectangle())
+}
+                            .menuStyle(BorderlessButtonMenuStyle())
                         }
                     }
                     .padding(.horizontal)
@@ -144,7 +140,6 @@ struct ContentView: View {
                     Label("New Note", systemImage: "plus")
                 }
                 .buttonStyle(BorderlessButtonStyle())
-                .disabled(notes.count >= 5)
 
                 Button(action: {
                     deleteIndex = selectedTab
@@ -154,7 +149,19 @@ struct ContentView: View {
                 }
                 .buttonStyle(BorderlessButtonStyle())
                 .disabled(notes.isEmpty)
-            }
+                            
+                            }
+                            .padding(.bottom, 5)
+
+
+                Button(action: {
+                    editedTabTitle = notes[selectedTab].title
+                    isEditingTabTitle = true
+                }) {
+                    Label("Edit Title", systemImage: "pencil")
+                }
+                .buttonStyle(BorderlessButtonStyle())
+                .disabled(notes.isEmpty)
             .padding(.bottom, 5)
 
             HStack {
@@ -186,6 +193,54 @@ struct ContentView: View {
         })
     }
 
+    func tabButton(for note: Note, index: Int) -> some View {
+        Group {
+            if isEditingTabTitle && selectedTab == index {
+                TextField("", text: $editedTabTitle, onCommit: {
+                    notes[index].title = editedTabTitle
+                    isEditingTabTitle = false
+                    saveNotes()
+                })
+                .focused($isTextFieldFocused)
+                .textFieldStyle(PlainTextFieldStyle())
+                .padding(6)
+                .background(Color.gray.opacity(0.2))
+                .cornerRadius(6)
+                .onAppear {
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                        isTextFieldFocused = true
+                    }
+                }
+            } else {
+                Text(note.title)
+                    .lineLimit(1)
+                    .truncationMode(.tail)
+                    .padding(6)
+                    .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
+                    .cornerRadius(6)
+                    .contextMenu {
+                        Button("Edit Title") {
+                            editedTabTitle = note.title
+                            isEditingTabTitle = true
+                            selectedTab = index
+                        }
+                        Button("Delete Note", role: .destructive) {
+                            deleteIndex = index
+                            showDeleteAlert = true
+                        }
+                    }
+                    .onTapGesture(count: 2) {
+                        editedTabTitle = note.title
+                        isEditingTabTitle = true
+                        selectedTab = index
+                    }
+                    .onTapGesture {
+                        selectedTab = index
+                    }
+            }
+        }
+    }
+
     func showNativeMenu() {
         let menu = NSMenu()
         let settingsItem = NSMenuItem(title: "Settings", action: #selector(controller.openSettings(_:)), keyEquivalent: "")
@@ -200,7 +255,6 @@ struct ContentView: View {
     }
 
     func addNote() {
-        guard notes.count < 5 else { return }
         let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? notes.count + 1
         notes.append(Note(title: "Note \(nextNumber)", text: ""))
         selectedTab = notes.count - 1
