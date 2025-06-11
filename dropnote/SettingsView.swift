@@ -5,6 +5,8 @@ struct SettingsView: View {
     @State private var showInDock = SettingsManager.shared.settings.showInDock
     @State private var startOnBoot = SettingsManager.shared.settings.startOnBoot
     @State private var showWordCounter = SettingsManager.shared.settings.showWordCounter
+    @State private var enableMarkdown = SettingsManager.shared.settings.enableMarkdown
+    @State private var enableImages = SettingsManager.shared.settings.enableImages
     @State private var selectedSection: String? = "General"
 
     var body: some View {
@@ -53,6 +55,26 @@ struct SettingsView: View {
                                 }
                         }
 
+                        HStack {
+                            Text("Enable Markdown")
+                            Spacer()
+                            Toggle("", isOn: $enableMarkdown)
+                                .labelsHidden()
+                                .onChange(of: enableMarkdown) { newValue in
+                                    updateSettings(enableMarkdown: newValue)
+                                }
+                        }
+
+                        HStack {
+                            Text("Enable Images")
+                            Spacer()
+                            Toggle("", isOn: $enableImages)
+                                .labelsHidden()
+                                .onChange(of: enableImages) { newValue in
+                                    updateSettings(enableImages: newValue)
+                                }
+                        }
+
                         Spacer()
 
                         Text("Current version: 1.2")
@@ -98,6 +120,8 @@ struct SettingsView: View {
             showInDock = SettingsManager.shared.settings.showInDock
             startOnBoot = SettingsManager.shared.settings.startOnBoot
             showWordCounter = SettingsManager.shared.settings.showWordCounter
+            enableMarkdown = SettingsManager.shared.settings.enableMarkdown
+            enableImages = SettingsManager.shared.settings.enableImages
             NSApplication.shared.setActivationPolicy(.regular)
         }
         .onDisappear {
@@ -107,11 +131,13 @@ struct SettingsView: View {
         }
     }
 
-    func updateSettings(showInDock: Bool? = nil, startOnBoot: Bool? = nil, showWordCounter: Bool? = nil) {
+    func updateSettings(showInDock: Bool? = nil, startOnBoot: Bool? = nil, showWordCounter: Bool? = nil, enableMarkdown: Bool? = nil, enableImages: Bool? = nil) {
         let updated = AppSettings(
             showInDock: showInDock ?? self.showInDock,
             startOnBoot: startOnBoot ?? self.startOnBoot,
-            showWordCounter: showWordCounter ?? self.showWordCounter
+            showWordCounter: showWordCounter ?? self.showWordCounter,
+            enableMarkdown: enableMarkdown ?? self.enableMarkdown,
+            enableImages: enableImages ?? self.enableImages
         )
         SettingsManager.shared.updateSetting(updated)
         NotificationCenter.default.post(name: Notification.Name("SettingsChanged"), object: nil)

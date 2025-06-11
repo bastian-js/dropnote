@@ -2,9 +2,11 @@ import Foundation
 import AppKit
 
 struct AppSettings: Codable {
-    var showInDock: Bool
-    var startOnBoot: Bool
-    var showWordCounter: Bool
+    var showInDock: Bool = true
+    var startOnBoot: Bool = false
+    var showWordCounter: Bool = true
+    var enableMarkdown: Bool = true
+    var enableImages: Bool = true
 }
 
 class SettingsManager {
@@ -17,7 +19,7 @@ class SettingsManager {
         applyDockSetting()
     }
 
-    private(set) var settings = AppSettings(showInDock: true, startOnBoot: false, showWordCounter: true) {
+    private(set) var settings = AppSettings() {
         didSet {
             saveSettings()
             applyDockSetting()
