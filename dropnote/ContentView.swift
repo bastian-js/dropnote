@@ -90,6 +90,7 @@ struct ContentView: View {
                 if isSearching {
                     TextField("Search", text: $searchText)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .frame(maxWidth: .infinity)
                         .transition(.opacity)
                         .focused($isSearchFieldFocused)
                         .onChange(of: isSearchFieldFocused) { focused in
@@ -103,6 +104,7 @@ struct ContentView: View {
                             }
                         }
                 } else {
+                    Spacer()
                     Button(action: {
                         withAnimation { isSearching = true }
                     }) {
