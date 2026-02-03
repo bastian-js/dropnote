@@ -166,84 +166,93 @@ struct ContentView: View {
             .padding(.horizontal)
             .padding(.vertical, 4)
 
-            // Notizbereich mit Vorschau und Editor
+            // Notizbereich
             if filteredIndices.isEmpty {
                 Text("No notes available")
                     .foregroundColor(.gray)
                     .padding()
+                    .frame(maxHeight: .infinity)
             } else if let current = activeIndex {
-                VStack(alignment: .leading, spacing: 4) {
-                    if showPreview {
-                        ScrollView {
-                            markdownText(notes[current].text)
-                                .frame(maxWidth: .infinity, alignment: .leading)
-                            ForEach(notes[current].images, id: \.self) { img in
-                                let url = notesDirectory
-                                    .appendingPathComponent(notes[current].id.uuidString)
-                                    .appendingPathComponent(img)
-                                if let nsimg = NSImage(contentsOf: url) {
-                                    Image(nsImage: nsimg)
-                                        .resizable()
-                                        .scaledToFit()
-                                }
-                            }
-                        }
+                ZStack(alignment: .bottom) {
+                    TextEditor(text: $notes[current].text)
                         .padding(16)
                         .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    } else {
-                        ScrollView {
-                            VStack(alignment: .leading, spacing: 10) {
-                                TextEditor(text: $notes[current].text)
-                                    .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
-                                    .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
-                                    .frame(maxWidth: .infinity)
-                                    .lineSpacing(6)
-                                    .font(.system(size: 16))
-                                    .onChange(of: notes[current].text) { _ in
-                                        saveNotes()
-                                    }
-                                    .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
-                                        imagesEnabled ? handleDrop(providers: providers, index: current) : false
-                                    }
-                                ForEach(notes[current].images, id: \.self) { img in
-                                    let url = notesDirectory
-                                        .appendingPathComponent(notes[current].id.uuidString)
-                                        .appendingPathComponent(img)
-                                    if let nsimg = NSImage(contentsOf: url) {
-                                        Image(nsImage: nsimg)
-                                            .resizable()
-                                            .scaledToFit()
-                                    }
-                                }
-                            }
+                        .lineSpacing(6)
+                        .font(.system(size: 16))
+                        .onChange(of: notes[current].text) { _ in
+                            saveNotes()
                         }
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    }
+                        .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
+                            imagesEnabled ? handleDrop(providers: providers, index: current) : false
+                        }
 
-                    if showWordCounter {
-                        HStack {
-                            Text("Words: \(notes[current].text.split { $0.isWhitespace || $0.isNewline }.count)")
-                                .font(.footnote)
-                                .foregroundColor(.secondary)
-                                .padding(.leading, 8)
-                                .padding(.bottom, 4)
-                            Spacer()
+                    VStack(spacing: 8) {
+                        HStack(spacing: 24) {
+                            Button(action: addNote) {
+                                Image(systemName: "plus")
+                                    .font(.system(size: 16))
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                            .help("New Note")
+
+                            if imagesEnabled {
+                                Button(action: insertImage) {
+                                    Image(systemName: "photo")
+                                        .font(.system(size: 16))
+                                }
+                                .buttonStyle(BorderlessButtonStyle())
+                                .help("Add Image")
+                                .disabled(activeIndex == nil)
+                            }
+
+                            Button(action: {
+                                deleteIndex = activeIndex ?? selectedTab
+                                showDeleteAlert = true
+                            }) {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 16))
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                            .help("Delete")
+                            .disabled(notes.isEmpty)
                         }
+
+                        HStack {
+                            Spacer()
+                            Button(action: showNativeMenu) {
+                                Image(systemName: "gear")
+                                    .padding(5)
+                            }
+                            .buttonStyle(BorderlessButtonStyle())
+                        }
+                    }
+                    .padding(.bottom, 5)
+                    .background(Color.clear)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            
+            
+
+                if showWordCounter {
+                    HStack {
+                        Text("Words: \(notes[current].text.split { $0.isWhitespace || $0.isNewline }.count)")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                            .padding(.leading, 8)
+                            .padding(.bottom, 4)
+                        Spacer()
                     }
                 }
-                .padding(.top, 6)
-                .padding(.trailing, 10)
             }
 
-            // Buttons unten
-<<<<<<< HEAD
-            HStack {
-=======
-            HStack(spacing: 16) {
->>>>>>> 457a0e15dc3ed23e0d986ba7afeb13eb84675f76
+            // Button-Zeile unten zentriert
+            HStack(spacing: 24) {
+                Spacer()
+
                 Button(action: addNote) {
                     Image(systemName: "plus")
+                        .font(.system(size: 16))
                 }
                 .buttonStyle(BorderlessButtonStyle())
                 .help("New Note")
@@ -251,6 +260,7 @@ struct ContentView: View {
                 if imagesEnabled {
                     Button(action: insertImage) {
                         Image(systemName: "photo")
+                            .font(.system(size: 16))
                     }
                     .buttonStyle(BorderlessButtonStyle())
                     .help("Add Image")
@@ -262,32 +272,17 @@ struct ContentView: View {
                     showDeleteAlert = true
                 }) {
                     Image(systemName: "trash")
+                        .font(.system(size: 16))
                 }
                 .buttonStyle(BorderlessButtonStyle())
                 .help("Delete")
                 .disabled(notes.isEmpty)
 
-                Button(action: {
-                    editedTabTitle = notes[selectedTab].title
-                    isEditingTabTitle = true
-                }) {
-                    Image(systemName: "pencil")
-                }
-                .buttonStyle(BorderlessButtonStyle())
-                .help("Edit Title")
-                .disabled(notes.isEmpty)
-
                 Spacer()
-
-                if markdownEnabled {
-                    Toggle("", isOn: $showPreview)
-                        .toggleStyle(SwitchToggleStyle())
-                        .frame(width: 60)
-                        .help("Preview")
-                }
             }
             .padding(.bottom, 5)
 
+            // Zahnrad rechts unten
             HStack {
                 Spacer()
                 Button(action: showNativeMenu) {
@@ -316,9 +311,9 @@ struct ContentView: View {
             showWordCounter = SettingsManager.shared.settings.showWordCounter
             markdownEnabled = SettingsManager.shared.settings.enableMarkdown
             imagesEnabled = SettingsManager.shared.settings.enableImages
-            if !markdownEnabled { showPreview = false }
         })
     }
+
 
     /// Very small Markdown renderer for preview mode
     func markdownText(_ text: String) -> Text {

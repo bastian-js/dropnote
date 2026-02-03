@@ -12,24 +12,28 @@ import ServiceManagement
 class AppDelegate: NSObject, NSApplicationDelegate {
     var statusItem: NSStatusItem!
     var popover: NSPopover!
-    
+
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Menüleisten-Item erstellen
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
+
         if let button = statusItem.button {
-            button.image = NSImage(named: "MenubarIcon")
+            button.image = NSImage(named: "MenubarIcon") // ein einziges weißes Icon
             button.image?.size = NSSize(width: 14, height: 14)
-            button.image?.isTemplate = false
+            button.image?.isTemplate = true // Template-Modus aktiviert automatische Einfärbung
             button.action = #selector(togglePopover(_:))
         }
-        
+
+        // Popover konfigurieren
         popover = NSPopover()
         popover.contentSize = NSSize(width: 300, height: 400)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: ContentView())
-        
-        applyStartupSetting() // ⬅️ Autostart prüfen & setzen
+
+        // Autostart anwenden
+        applyStartupSetting()
     }
-    
+
     @objc func togglePopover(_ sender: AnyObject?) {
         if let button = statusItem.button {
             if popover.isShown {
@@ -39,7 +43,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             }
         }
     }
-    
+
     func applyStartupSetting() {
         let shouldStartOnBoot = SettingsManager.shared.settings.startOnBoot
         print("🌀 Startup setting =", shouldStartOnBoot)
