@@ -47,6 +47,7 @@ struct ContentView: View {
     @State private var isSearching: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
     @State private var showPreview: Bool = false
+    @State private var showEditorToolbar: Bool = false
 
     private let notesDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/DropNote/Notes")
@@ -196,6 +197,37 @@ struct ContentView: View {
                     } else {
                         ScrollView {
                             VStack(alignment: .leading, spacing: 10) {
+                                if showEditorToolbar {
+                                    HStack(spacing: 16) {
+                                        Button(action: addNote) {
+                                            Image(systemName: "plus")
+                                        }
+                                        .buttonStyle(BorderlessButtonStyle())
+                                        .help("New Note")
+
+                                        if imagesEnabled {
+                                            Button(action: insertImage) {
+                                                Image(systemName: "photo")
+                                            }
+                                            .buttonStyle(BorderlessButtonStyle())
+                                            .help("Add Image")
+                                            .disabled(activeIndex == nil)
+                                        }
+
+                                        Button(action: {
+                                            deleteIndex = activeIndex ?? selectedTab
+                                            showDeleteAlert = true
+                                        }) {
+                                            Image(systemName: "trash")
+                                        }
+                                        .buttonStyle(BorderlessButtonStyle())
+                                        .help("Delete")
+                                        .disabled(notes.isEmpty)
+
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 8)
+                                }
                                 TextEditor(text: $notes[current].text)
                                     .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
                                     .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
@@ -359,6 +391,9 @@ struct ContentView: View {
         let folder = notesDirectory.appendingPathComponent(newNote.id.uuidString)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         selectedTab = notes.count - 1
+        if !showEditorToolbar {
+            showEditorToolbar = true
+        }
         saveNotes()
     }
 
