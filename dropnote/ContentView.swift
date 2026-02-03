@@ -232,8 +232,8 @@ struct ContentView: View {
                         }
                     }
                 }
-                .padding(.top, 6)
-                .padding(.trailing, 10)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 10)
             }
 
             // Buttons unten
