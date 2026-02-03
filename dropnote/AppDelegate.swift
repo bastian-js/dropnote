@@ -26,6 +26,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         popover.contentSize = NSSize(width: 300, height: 400)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: ContentView())
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleAppDidResignActive),
+            name: NSApplication.didResignActiveNotification,
+            object: nil
+        )
         
         applyStartupSetting() // ⬅️ Autostart prüfen & setzen
     }
@@ -38,6 +45,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             }
         }
+    }
+
+    @objc private func handleAppDidResignActive() {
+        popover.performClose(nil)
     }
     
     func applyStartupSetting() {
@@ -58,5 +69,9 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             print("❌ Autostart error:", error.localizedDescription)
         }
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
 }
