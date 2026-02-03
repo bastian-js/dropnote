@@ -239,11 +239,7 @@ struct ContentView: View {
             }
 
             // Buttons unten
-<<<<<<< HEAD
-            HStack {
-=======
             HStack(spacing: 16) {
->>>>>>> 457a0e15dc3ed23e0d986ba7afeb13eb84675f76
                 Button(action: addNote) {
                     Image(systemName: "plus")
                 }
@@ -292,11 +288,18 @@ struct ContentView: View {
 
             HStack {
                 Spacer()
-                Button(action: showNativeMenu) {
+                Button(action: {
+                    controller.openSettings(nil)
+                }) {
                     Image(systemName: "gear")
                         .padding(5)
                 }
                 .buttonStyle(BorderlessButtonStyle())
+                .contextMenu {
+                    Button("Quit DropNote") {
+                        controller.quitApp(nil)
+                    }
+                }
             }
         }
         .padding(.top, 8)
@@ -347,19 +350,6 @@ struct ContentView: View {
             if i < lines.count - 1 { result = result + Text("\n") }
         }
         return result
-    }
-
-    func showNativeMenu() {
-        let menu = NSMenu()
-        let settingsItem = NSMenuItem(title: "Settings", action: #selector(controller.openSettings(_:)), keyEquivalent: "")
-        settingsItem.target = controller
-        menu.addItem(settingsItem)
-        menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "Quit DropNote", action: #selector(controller.quitApp(_:)), keyEquivalent: "q")
-        quitItem.target = controller
-        menu.addItem(quitItem)
-        let mouseLocation = NSEvent.mouseLocation
-        menu.popUp(positioning: nil, at: mouseLocation, in: nil)
     }
 
     func addNote() {
