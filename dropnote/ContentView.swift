@@ -47,6 +47,7 @@ struct ContentView: View {
     @State private var isSearching: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
     @State private var showPreview: Bool = false
+    @State private var showEditorToolbar: Bool = false
 
     private let notesDirectory = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/DropNote/Notes")
@@ -90,6 +91,7 @@ struct ContentView: View {
                 if isSearching {
                     TextField("Search", text: $searchText)
                         .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .frame(maxWidth: .infinity)
                         .transition(.opacity)
                         .focused($isSearchFieldFocused)
                         .onChange(of: isSearchFieldFocused) { focused in
@@ -103,6 +105,7 @@ struct ContentView: View {
                             }
                         }
                 } else {
+                    Spacer()
                     Button(action: {
                         withAnimation { isSearching = true }
                     }) {
@@ -178,78 +181,84 @@ struct ContentView: View {
                         .padding(16)
                         .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
-                        .lineSpacing(6)
-                        .font(.system(size: 16))
-                        .onChange(of: notes[current].text) { _ in
-                            saveNotes()
-                        }
-                        .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
-                            imagesEnabled ? handleDrop(providers: providers, index: current) : false
-                        }
+                    } else {
+                        ScrollView {
+                            VStack(alignment: .leading, spacing: 10) {
+                                if showEditorToolbar {
+                                    HStack(spacing: 16) {
+                                        Button(action: addNote) {
+                                            Image(systemName: "plus")
+                                        }
+                                        .buttonStyle(BorderlessButtonStyle())
+                                        .help("New Note")
 
-                    VStack(spacing: 8) {
-                        HStack(spacing: 24) {
-                            Button(action: addNote) {
-                                Image(systemName: "plus")
-                                    .font(.system(size: 16))
-                            }
-                            .buttonStyle(BorderlessButtonStyle())
-                            .help("New Note")
+                                        if imagesEnabled {
+                                            Button(action: insertImage) {
+                                                Image(systemName: "photo")
+                                            }
+                                            .buttonStyle(BorderlessButtonStyle())
+                                            .help("Add Image")
+                                            .disabled(activeIndex == nil)
+                                        }
 
-                            if imagesEnabled {
-                                Button(action: insertImage) {
-                                    Image(systemName: "photo")
-                                        .font(.system(size: 16))
+                                        Button(action: {
+                                            deleteIndex = activeIndex ?? selectedTab
+                                            showDeleteAlert = true
+                                        }) {
+                                            Image(systemName: "trash")
+                                        }
+                                        .buttonStyle(BorderlessButtonStyle())
+                                        .help("Delete")
+                                        .disabled(notes.isEmpty)
+
+                                        Spacer()
+                                    }
+                                    .padding(.horizontal, 8)
                                 }
-                                .buttonStyle(BorderlessButtonStyle())
-                                .help("Add Image")
-                                .disabled(activeIndex == nil)
-                            }
-
-                            Button(action: {
-                                deleteIndex = activeIndex ?? selectedTab
-                                showDeleteAlert = true
-                            }) {
-                                Image(systemName: "trash")
+                                TextEditor(text: $notes[current].text)
+                                    .padding(EdgeInsets(top: 16, leading: 16, bottom: 16, trailing: 2))
+                                    .background(RoundedRectangle(cornerRadius: 10).stroke(Color.gray, lineWidth: 1))
+                                    .frame(maxWidth: .infinity)
+                                    .lineSpacing(6)
                                     .font(.system(size: 16))
+                                    .onChange(of: notes[current].text) { _ in
+                                        saveNotes()
+                                    }
+                                    .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
+                                        imagesEnabled ? handleDrop(providers: providers, index: current) : false
+                                    }
+                                ForEach(notes[current].images, id: \.self) { img in
+                                    let url = notesDirectory
+                                        .appendingPathComponent(notes[current].id.uuidString)
+                                        .appendingPathComponent(img)
+                                    if let nsimg = NSImage(contentsOf: url) {
+                                        Image(nsImage: nsimg)
+                                            .resizable()
+                                            .scaledToFit()
+                                    }
+                                }
                             }
-                            .buttonStyle(BorderlessButtonStyle())
-                            .help("Delete")
-                            .disabled(notes.isEmpty)
                         }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    }
 
+                    if showWordCounter {
                         HStack {
+                            Text("Words: \(notes[current].text.split { $0.isWhitespace || $0.isNewline }.count)")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                                .padding(.leading, 8)
+                                .padding(.bottom, 4)
                             Spacer()
-                            Button(action: showNativeMenu) {
-                                Image(systemName: "gear")
-                                    .padding(5)
-                            }
-                            .buttonStyle(BorderlessButtonStyle())
                         }
                     }
-                    .padding(.bottom, 5)
-                    .background(Color.clear)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            
-            
-
-                if showWordCounter {
-                    HStack {
-                        Text("Words: \(notes[current].text.split { $0.isWhitespace || $0.isNewline }.count)")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
-                            .padding(.leading, 8)
-                            .padding(.bottom, 4)
-                        Spacer()
-                    }
-                }
+                .padding(.horizontal, 10)
+                .padding(.vertical, 10)
             }
 
-            // Button-Zeile unten zentriert
-            HStack(spacing: 24) {
-                Spacer()
-
+            // Buttons unten
+            HStack(spacing: 16) {
                 Button(action: addNote) {
                     Image(systemName: "plus")
                         .font(.system(size: 16))
@@ -285,11 +294,18 @@ struct ContentView: View {
             // Zahnrad rechts unten
             HStack {
                 Spacer()
-                Button(action: showNativeMenu) {
+                Button(action: {
+                    controller.openSettings(nil)
+                }) {
                     Image(systemName: "gear")
                         .padding(5)
                 }
                 .buttonStyle(BorderlessButtonStyle())
+                .contextMenu {
+                    Button("Quit DropNote") {
+                        controller.quitApp(nil)
+                    }
+                }
             }
         }
         .padding(.top, 8)
@@ -342,19 +358,6 @@ struct ContentView: View {
         return result
     }
 
-    func showNativeMenu() {
-        let menu = NSMenu()
-        let settingsItem = NSMenuItem(title: "Settings", action: #selector(controller.openSettings(_:)), keyEquivalent: "")
-        settingsItem.target = controller
-        menu.addItem(settingsItem)
-        menu.addItem(.separator())
-        let quitItem = NSMenuItem(title: "Quit DropNote", action: #selector(controller.quitApp(_:)), keyEquivalent: "q")
-        quitItem.target = controller
-        menu.addItem(quitItem)
-        let mouseLocation = NSEvent.mouseLocation
-        menu.popUp(positioning: nil, at: mouseLocation, in: nil)
-    }
-
     func addNote() {
         let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? notes.count + 1
         let newNote = Note(title: "Note \(nextNumber)", text: "")
@@ -362,6 +365,9 @@ struct ContentView: View {
         let folder = notesDirectory.appendingPathComponent(newNote.id.uuidString)
         try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
         selectedTab = notes.count - 1
+        if !showEditorToolbar {
+            showEditorToolbar = true
+        }
         saveNotes()
     }
 
