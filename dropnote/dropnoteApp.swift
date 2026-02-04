@@ -1,10 +1,3 @@
-//
-//  dropnoteApp.swift
-//  dropnote
-//
-//  Created by bastian-js on 10.03.25.
-//
-
 import SwiftUI
 
 @main

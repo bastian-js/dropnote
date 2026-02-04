@@ -1,12 +1,13 @@
 import SwiftUI
 import AppKit
-import UniformTypeIdentifiers
+import LocalAuthentication
 
 struct Note: Codable, Identifiable {
     var id = UUID()
     var title: String
     var text: String
-    var images: [String] = []
+    var isPinned: Bool = false
+    var isLocked: Bool = false
 }
 
 class ContentViewController: NSObject {
@@ -45,20 +46,36 @@ struct ContentView: View {
     @State private var deleteIndex: Int? = nil
 
     @State private var showWordCounter: Bool
-    @State private var markdownEnabled: Bool
-    @State private var imagesEnabled: Bool
 
     @State private var searchText: String = ""
     @State private var isSearching: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
 
-    @State private var showPreview: Bool = false
     @State private var showEditorToolbar: Bool = true
 
-    private let editorHeight: CGFloat = 240
+    private let editorHeight: CGFloat = 200
+    private let toolbarHeight: CGFloat = 38
 
-    private let notesDirectory = FileManager.default.homeDirectoryForCurrentUser
-        .appendingPathComponent("Library/Application Support/DropNote/Notes")
+    @State private var isSaving: Bool = false
+    @State private var lastSavedAt: Date? = nil
+    @State private var pendingSaveWorkItem: DispatchWorkItem? = nil
+    @State private var savingStatusTimer: Timer? = nil
+
+    @State private var unlockedNoteIDs: Set<UUID> = []
+
+    @Environment(\.undoManager) private var undoManager
+
+    private func closeDropdownsAndEditing() {
+        if isSearching {
+            withAnimation { isSearching = false }
+            isSearchFieldFocused = false
+        }
+        if isEditingTabTitle {
+            isTextFieldFocused = false
+            isEditingTabTitle = false
+        }
+    }
+
     private let savePath = FileManager.default.homeDirectoryForCurrentUser
         .appendingPathComponent("Library/Application Support/DropNote/notes.json")
 
@@ -66,12 +83,22 @@ struct ContentView: View {
 
     private var filteredIndices: [Int] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty { return Array(notes.indices) }
+        let base: [Int]
+        if trimmed.isEmpty {
+            base = Array(notes.indices)
+        } else {
+            let q = trimmed.lowercased()
+            base = notes.indices.filter { i in
+                notes[i].title.lowercased().contains(q) ||
+                notes[i].text.lowercased().contains(q)
+            }
+        }
 
-        let q = trimmed.lowercased()
-        return notes.indices.filter { i in
-            notes[i].title.lowercased().contains(q) ||
-            notes[i].text.lowercased().contains(q)
+        return base.sorted { a, b in
+            let na = notes[a]
+            let nb = notes[b]
+            if na.isPinned != nb.isPinned { return na.isPinned && !nb.isPinned }
+            return na.title.localizedCaseInsensitiveCompare(nb.title) == .orderedAscending
         }
     }
 
@@ -83,277 +110,20 @@ struct ContentView: View {
     init() {
         let s = SettingsManager.shared.settings
         _showWordCounter = State(initialValue: s.showWordCounter)
-        _markdownEnabled  = State(initialValue: s.enableMarkdown)
-        _imagesEnabled    = State(initialValue: s.enableImages)
 
         if let loaded = ContentView.loadNotesStatic(savePath: FileManager.default.homeDirectoryForCurrentUser
             .appendingPathComponent("Library/Application Support/DropNote/notes.json")) {
             _notes = State(initialValue: loaded)
         }
 
-        try? FileManager.default.createDirectory(
-            at: FileManager.default.homeDirectoryForCurrentUser
-                .appendingPathComponent("Library/Application Support/DropNote/Notes"),
-            withIntermediateDirectories: true
-        )
-
         let showInDock = s.showInDock
         NSApplication.shared.setActivationPolicy(showInDock ? .regular : .accessory)
     }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            VStack(spacing: 10) {
-
-            // Suchfeld oben
-            HStack {
-                if isSearching {
-                    TextField("Search", text: $searchText)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
-                        .frame(maxWidth: .infinity)
-                        .transition(.opacity)
-                        .focused($isSearchFieldFocused)
-                        .onChange(of: isSearchFieldFocused) { focused in
-                            if !focused {
-                                withAnimation { isSearching = false }
-                            }
-                        }
-                        .onAppear {
-                            DispatchQueue.main.async { self.isSearchFieldFocused = true }
-                        }
-                } else {
-                    Spacer()
-                    Button {
-                        withAnimation { isSearching = true }
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                            .padding(6)
-                    }
-                    .buttonStyle(PlainButtonStyle())
-                }
-            }
-            .padding(.horizontal)
-
-            // Tabs
-            HStack(spacing: 6) {
-                ForEach(filteredIndices, id: \.self) { index in
-                    let note = notes[index]
-
-                    if isEditingTabTitle && selectedTab == index {
-                        TextField("", text: $editedTabTitle, onCommit: {
-                            notes[index].title = editedTabTitle
-                            isEditingTabTitle = false
-                            saveNotes()
-                        })
-                        .focused($isTextFieldFocused)
-                        .textFieldStyle(PlainTextFieldStyle())
-                        .padding(6)
-                        .background(Color.gray.opacity(0.2))
-                        .cornerRadius(6)
-                        .onChange(of: isTextFieldFocused) { focused in
-                            guard !focused, isEditingTabTitle, selectedTab == index else { return }
-                            let trimmed = editedTabTitle.trimmingCharacters(in: .whitespacesAndNewlines)
-                            if !trimmed.isEmpty {
-                                notes[index].title = trimmed
-                                saveNotes()
-                            }
-                            isEditingTabTitle = false
-                        }
-                        .onAppear {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                                isTextFieldFocused = true
-                            }
-                        }
-                    } else {
-                        Text(note.title)
-                            .lineLimit(1)
-                            .truncationMode(.tail)
-                            .padding(6)
-                            .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
-                            .cornerRadius(6)
-                            .contextMenu {
-                                Button("Edit Title") {
-                                    editedTabTitle = note.title
-                                    isEditingTabTitle = true
-                                    selectedTab = index
-                                }
-                                Button("Delete Note", role: .destructive) {
-                                    deleteIndex = index
-                                    showDeleteAlert = true
-                                }
-                            }
-                            .onTapGesture(count: 2) {
-                                editedTabTitle = note.title
-                                isEditingTabTitle = true
-                                selectedTab = index
-                            }
-                            .onTapGesture {
-                                selectedTab = index
-                            }
-                    }
-                }
-            }
-            .padding(.horizontal)
-            .padding(.vertical, 4)
-
-            // Notizbereich
-            Group {
-                if filteredIndices.isEmpty {
-                    Text("No notes available")
-                        .foregroundColor(.gray)
-                        .padding()
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let current = activeIndex {
-                    VStack(spacing: 10) {
-                        // Editor / Preview (fixed size; internal scroll)
-                        ZStack(alignment: .bottomLeading) {
-                            RoundedRectangle(cornerRadius: 12)
-                                .fill(.thinMaterial)
-                                .overlay(
-                                    RoundedRectangle(cornerRadius: 12)
-                                        .stroke(Color.gray.opacity(0.35), lineWidth: 1)
-                                )
-
-                            if showPreview && markdownEnabled {
-                                ScrollView {
-                                    markdownText(notes[current].text)
-                                        .frame(maxWidth: .infinity, alignment: .leading)
-                                        .padding(16)
-                                }
-                                .frame(height: editorHeight)
-                                .padding(.horizontal, 2)
-                                .padding(.vertical, 2)
-                            } else {
-                                TextEditor(text: $notes[current].text)
-                                    .padding(EdgeInsets(top: 14, leading: 14, bottom: 18, trailing: 10))
-                                    .frame(height: editorHeight)
-                                    .frame(maxWidth: .infinity)
-                                    .lineSpacing(6)
-                                    .font(.system(size: 15))
-                                    .scrollContentBackground(.hidden)
-                                    .onChange(of: notes[current].text) { _ in
-                                        saveNotes()
-                                    }
-                                    .onDrop(of: [UTType.fileURL], isTargeted: nil) { providers in
-                                        imagesEnabled ? handleDrop(providers: providers, index: current) : false
-                                    }
-                            }
-
-                            if showWordCounter {
-                                Text("Words: \(notes[current].text.split { $0.isWhitespace || $0.isNewline }.count)")
-                                    .font(.footnote)
-                                    .foregroundColor(.secondary)
-                                    .padding(.leading, 10)
-                                    .padding(.bottom, 8)
-                            }
-                        }
-
-                        // Single toolbar (always one, centered UNDER the text field)
-                        if showEditorToolbar {
-                            HStack(spacing: 14) {
-                                Button(action: addNote) { Image(systemName: "plus") }
-                                    .buttonStyle(BorderlessButtonStyle())
-                                    .help("New Note")
-
-                                if imagesEnabled {
-                                    Button(action: insertImage) { Image(systemName: "photo") }
-                                        .buttonStyle(BorderlessButtonStyle())
-                                        .help("Add Image")
-                                }
-
-                                Button {
-                                    deleteIndex = current
-                                    showDeleteAlert = true
-                                } label: {
-                                    Image(systemName: "trash")
-                                }
-                                .buttonStyle(BorderlessButtonStyle())
-                                .help("Delete")
-
-                                if markdownEnabled {
-                                    Button {
-                                        showPreview.toggle()
-                                    } label: {
-                                        Image(systemName: showPreview ? "doc.plaintext" : "doc.richtext")
-                                    }
-                                    .buttonStyle(BorderlessButtonStyle())
-                                    .help("Toggle Preview")
-                                }
-                            }
-                            .padding(.horizontal, 14)
-                            .padding(.vertical, 8)
-                            .background(.ultraThinMaterial)
-                            .clipShape(RoundedRectangle(cornerRadius: 12))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 12)
-                                    .stroke(Color.gray.opacity(0.25), lineWidth: 1)
-                            )
-                            .frame(maxWidth: .infinity, alignment: .center)
-                        }
-
-                        // Images list (scrolls separately)
-                        if imagesEnabled && !notes[current].images.isEmpty {
-                            ScrollView {
-                                VStack(spacing: 10) {
-                                    ForEach(notes[current].images, id: \.self) { img in
-                                        let url = notesDirectory
-                                            .appendingPathComponent(notes[current].id.uuidString)
-                                            .appendingPathComponent(img)
-                                        if let nsimg = NSImage(contentsOf: url) {
-                                            Image(nsImage: nsimg)
-                                                .resizable()
-                                                .scaledToFit()
-                                                .clipShape(RoundedRectangle(cornerRadius: 10))
-                                        }
-                                    }
-                                }
-                                .padding(.top, 4)
-                            }
-                            .frame(maxHeight: .infinity)
-                        } else {
-                            Spacer(minLength: 0)
-                        }
-                    }
-                    .padding(.horizontal, 10)
-                    .padding(.vertical, 10)
-                }
-            }
-            }
-            .padding(.top, 10)
-            .frame(width: 320, height: 420)
-            .background(
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        // Click-outside: collapse search + title editing
-                        if isSearching {
-                            withAnimation { isSearching = false }
-                            isSearchFieldFocused = false
-                        }
-                        if isEditingTabTitle {
-                            isTextFieldFocused = false
-                        }
-                    }
-            )
-
-            // Settings wheel pinned bottom-right
-            Button {
-                controller.openSettings(nil)
-            } label: {
-                Image(systemName: "gearshape")
-                    .padding(10)
-                    .background(.ultraThinMaterial)
-                    .clipShape(RoundedRectangle(cornerRadius: 12))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: 12)
-                            .stroke(Color.gray.opacity(0.25), lineWidth: 1)
-                    )
-            }
-            .buttonStyle(BorderlessButtonStyle())
-            .contextMenu {
-                Button("Quit DropNote") { controller.quitApp(nil) }
-            }
-            .padding(10)
+        mainContent
+        .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
+            closeDropdownsAndEditing()
         }
         .onDisappear { saveNotes() }
         .alert("Delete note?", isPresented: $showDeleteAlert, presenting: deleteIndex) { index in
@@ -368,58 +138,450 @@ struct ContentView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsChanged"))) { _ in
             showWordCounter = SettingsManager.shared.settings.showWordCounter
-            markdownEnabled = SettingsManager.shared.settings.enableMarkdown
-            imagesEnabled = SettingsManager.shared.settings.enableImages
         }
     }
 
-    /// Very small Markdown renderer for preview mode
-    func markdownText(_ text: String) -> Text {
-        let lines = text.split(separator: "\n", omittingEmptySubsequences: false)
-        var result = Text("")
-        for (i, line) in lines.enumerated() {
-            let hashes = line.prefix { $0 == "#" }.count
-            let t: Text
-            if hashes > 0 && hashes <= 6 && line.dropFirst(hashes).first == " " {
-                let content = String(line.dropFirst(hashes + 1))
-                let font: Font
-                switch hashes {
-                case 1: font = .largeTitle
-                case 2: font = .title
-                case 3: font = .title2
-                case 4: font = .title3
-                default: font = .headline
-                }
-                t = Text(content).font(font).bold()
-            } else {
-                t = Text(String(line))
-            }
-            result = result + t
-            if i < lines.count - 1 { result = result + Text("\n") }
+    @ViewBuilder
+    private var mainContent: some View {
+        VStack(spacing: 6) {
+            searchBar
+            tabsBar
+            noteArea
+            bottomBar
+                .padding(.horizontal, 10)
+                .padding(.bottom, 8)
         }
-        return result
+        .padding(.top, 8)
+        .frame(width: 320, height: 480)
+        .background(
+            Color.clear
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    closeDropdownsAndEditing()
+                }
+        )
+    }
+
+    @ViewBuilder
+    private var searchBar: some View {
+        HStack(spacing: 8) {
+            Menu {
+                Button("Settings") {
+                    controller.openSettings(nil)
+                }
+                Divider()
+                Button("Quit DropNote") {
+                    controller.quitApp(nil)
+                }
+            } label: {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.secondary)
+            }
+            .buttonStyle(PlainButtonStyle())
+            .menuStyle(BorderlessButtonMenuStyle())
+            .menuIndicator(.hidden)
+            
+            if isSearching {
+                TextField("Search", text: $searchText)
+                    .textFieldStyle(RoundedBorderTextFieldStyle())
+                    .frame(maxWidth: .infinity)
+                    .transition(.opacity)
+                    .focused($isSearchFieldFocused)
+                    .onChange(of: isSearchFieldFocused) { _, focused in
+                        if !focused {
+                            withAnimation { isSearching = false }
+                        }
+                    }
+                    .onAppear {
+                            DispatchQueue.main.async { self.isSearchFieldFocused = true }
+                        }
+            } else {
+                Spacer()
+                Button {
+                    withAnimation { isSearching = true }
+                } label: {
+                    Image(systemName: "magnifyingglass")
+                        .padding(6)
+                }
+                .buttonStyle(PlainButtonStyle())
+            }
+        }
+        .padding(.horizontal)
+    }
+
+    @ViewBuilder
+    private var tabsBar: some View {
+        TabsBarView(
+            notes: $notes,
+            filteredIndices: filteredIndices,
+            selectedTab: $selectedTab,
+            isEditingTabTitle: $isEditingTabTitle,
+            editedTabTitle: $editedTabTitle,
+            isTextFieldFocused: $isTextFieldFocused,
+            requestDelete: { index in
+                deleteIndex = index
+                showDeleteAlert = true
+            },
+            persist: saveNotes,
+            requestTogglePin: { index in
+                notes[index].isPinned.toggle()
+                scheduleSave()
+            },
+            requestToggleLock: { index in
+                toggleLock(noteIndex: index)
+            }
+        )
+    }
+
+    @ViewBuilder
+    private var noteArea: some View {
+        Group {
+            if filteredIndices.isEmpty {
+                VStack(spacing: 12) {
+                    Spacer(minLength: 0)
+
+                    Image(systemName: "note.text")
+                        .font(.system(size: 34, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 4)
+
+                    Text("No notes yet")
+                        .font(.title3.weight(.semibold))
+
+                    Text("Create your first note to get started.")
+                        .font(.subheadline)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 24)
+
+                    Button {
+                        addNote()
+                    } label: {
+                        Label("Create Note", systemImage: "plus")
+                            .padding(.horizontal, 14)
+                            .padding(.vertical, 8)
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .transition(.scale.combined(with: .opacity))
+
+                    Spacer(minLength: 0)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(16)
+                .transition(.opacity)
+            } else if let current = activeIndex {
+                noteAreaContent(current: current)
+                    .transition(.asymmetric(insertion: .opacity.combined(with: .move(edge: .trailing)), removal: .opacity.combined(with: .move(edge: .leading))))
+                    .id(notes[current].id)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func noteAreaContent(current: Int) -> some View {
+        VStack(spacing: 0) {
+            ZStack(alignment: .bottomLeading) {
+                RoundedRectangle(cornerRadius: 12)
+                    .fill(.thinMaterial)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 12)
+                            .stroke(Color.gray.opacity(0.35), lineWidth: 1)
+                    )
+
+                Group {
+                    if notes[current].isLocked && !unlockedNoteIDs.contains(notes[current].id) {
+                        VStack(spacing: 10) {
+                            Image(systemName: "lock.fill")
+                                .font(.system(size: 22))
+                                .foregroundColor(.secondary)
+                            Text("Locked")
+                                .font(.headline)
+                            Text("Unlock to view and edit this note.")
+                                .font(.subheadline)
+                                .foregroundColor(.secondary)
+                            Button("Unlock") {
+                                unlockNoteFlow(noteIndex: current)
+                            }
+                            .keyboardShortcut(.defaultAction)
+                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .padding(16)
+                    } else {
+                        TextEditor(text: $notes[current].text)
+                            .padding(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 10))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                            .lineSpacing(6)
+                            .font(.system(size: 15))
+                            .scrollContentBackground(.hidden)
+                            .onChange(of: notes[current].text) { _, _ in
+                                scheduleSave()
+                            }
+                    }
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+
+                if showWordCounter {
+                    Text("Words: \(notes[current].text.split { $0.isWhitespace || $0.isNewline }.count)")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.leading, 12)
+                        .padding(.bottom, 10)
+                }
+            }
+            .frame(maxHeight: .infinity)
+        }
+        .frame(maxHeight: .infinity)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var bottomBar: some View {
+        if let current = activeIndex, showEditorToolbar {
+            editorToolbar(current: current)
+        }
+    }
+
+    private func editorToolbar(current: Int) -> some View {
+        HStack(spacing: 12) {
+            Spacer(minLength: 0)
+            
+            Button(action: addNote) { 
+                Image(systemName: "plus")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(BorderlessButtonStyle())
+            .help("New Note")
+
+            Button {
+                deleteIndex = current
+                showDeleteAlert = true
+            } label: {
+                Image(systemName: "trash")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(BorderlessButtonStyle())
+            .help("Delete")
+
+            Button {
+                notes[current].isPinned.toggle()
+                scheduleSave()
+            } label: {
+                Image(systemName: notes[current].isPinned ? "pin.fill" : "pin")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(BorderlessButtonStyle())
+            .help(notes[current].isPinned ? "Unpin" : "Pin")
+
+            Button {
+                toggleLock(noteIndex: current)
+            } label: {
+                Image(systemName: notes[current].isLocked ? "lock.fill" : "lock.open")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(BorderlessButtonStyle())
+            .help(notes[current].isLocked ? "Unlock / remove lock" : "Lock")
+
+            Menu {
+                Button("Copy as Plain Text") { copyPlainText(noteIndex: current) }
+                Divider()
+                Button("Export as TXT…") { exportAsTXT(noteIndex: current) }
+                Button("Export as PDF…") { exportAsPDF(noteIndex: current) }
+            } label: {
+                Image(systemName: "square.and.arrow.up")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .frame(width: 24, height: 24)
+            }
+            .buttonStyle(BorderlessButtonStyle())
+            .menuIndicator(.hidden)
+            .help("Share / Export")
+            
+            Spacer(minLength: 0)
+            
+            if isSaving {
+                Text("Saving...")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(.secondary)
+            } else {
+                Text("Saved")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundColor(.secondary)
+            }
+            
+            Spacer(minLength: 0)
+                .frame(maxWidth: 8)
+        }
+        .frame(maxWidth: .infinity, minHeight: toolbarHeight, maxHeight: toolbarHeight)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.gray.opacity(0.25), lineWidth: 1)
+        )
+    }
+
+    private var settingsButton: some View {
+        Menu {
+            Button("Settings") {
+                controller.openSettings(nil)
+            }
+            Divider()
+            Button("Quit DropNote") {
+                controller.quitApp(nil)
+            }
+        } label: {
+            ZStack {
+                Image(systemName: "gearshape")
+                    .font(.system(size: 15))
+                    .foregroundColor(.secondary)
+            }
+        }
+        .frame(width: 44, height: toolbarHeight)
+        .background(.ultraThinMaterial)
+        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .overlay(
+            RoundedRectangle(cornerRadius: 12)
+                .stroke(Color.gray.opacity(0.25), lineWidth: 1)
+        )
+        .menuStyle(BorderlessButtonMenuStyle())
+        .menuIndicator(.hidden)
+    }
+
+
+
+    private func scheduleSave() {
+        pendingSaveWorkItem?.cancel()
+        isSaving = true
+
+        let work = DispatchWorkItem { [savePath] in
+            DispatchQueue.main.async {
+                saveNotes()
+                lastSavedAt = Date()
+                
+                savingStatusTimer?.invalidate()
+                savingStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                    isSaving = false
+                }
+            }
+        }
+        pendingSaveWorkItem = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    private func unlockNoteFlow(noteIndex: Int) {
+        let note = notes[noteIndex]
+        guard note.isLocked else { return }
+
+        Task { @MainActor in
+            let ok = await NotesAuth.shared.authenticate(reason: "Unlock “\(note.title)”")
+            if ok {
+                unlockedNoteIDs.insert(note.id)
+            }
+        }
+    }
+
+    private func toggleLock(noteIndex: Int) {
+        let note = notes[noteIndex]
+        if note.isLocked {
+            Task { @MainActor in
+                let ok = await NotesAuth.shared.authenticate(reason: "Remove lock from “\(note.title)”")
+                if ok {
+                    notes[noteIndex].isLocked = false
+                    unlockedNoteIDs.remove(note.id)
+                    scheduleSave()
+                }
+            }
+        } else {
+            Task { @MainActor in
+                let ok = await NotesAuth.shared.ensurePasswordOrBiometricsConfigured()
+                if ok {
+                    notes[noteIndex].isLocked = true
+                    unlockedNoteIDs.remove(note.id)
+                    scheduleSave()
+                }
+            }
+        }
+    }
+
+    private func copyPlainText(noteIndex: Int) {
+        guard !notes[noteIndex].isLocked || unlockedNoteIDs.contains(notes[noteIndex].id) else { return }
+        let pb = NSPasteboard.general
+        pb.clearContents()
+        pb.setString(notes[noteIndex].text, forType: .string)
+    }
+
+    private func exportAsTXT(noteIndex: Int) {
+        guard !notes[noteIndex].isLocked || unlockedNoteIDs.contains(notes[noteIndex].id) else { return }
+        let note = notes[noteIndex]
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(note.title).txt"
+        panel.allowedContentTypes = [.plainText]
+        panel.canCreateDirectories = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                try note.text.data(using: .utf8)?.write(to: url, options: .atomic)
+            } catch {
+                print("Export TXT failed:", error.localizedDescription)
+            }
+        }
+    }
+
+    private func exportAsPDF(noteIndex: Int) {
+        guard !notes[noteIndex].isLocked || unlockedNoteIDs.contains(notes[noteIndex].id) else { return }
+        let note = notes[noteIndex]
+
+        let panel = NSSavePanel()
+        panel.nameFieldStringValue = "\(note.title).pdf"
+        panel.allowedContentTypes = [.pdf]
+        panel.canCreateDirectories = true
+        panel.begin { response in
+            guard response == .OK, let url = panel.url else { return }
+            do {
+                let pdf = makeSimplePDFData(title: note.title, body: note.text)
+                try pdf.write(to: url, options: .atomic)
+            } catch {
+                print("Export PDF failed:", error.localizedDescription)
+            }
+        }
+    }
+
+    private func makeSimplePDFData(title: String, body: String) -> Data {
+        let view = NSTextView(frame: NSRect(x: 0, y: 0, width: 612, height: 792))
+        view.isEditable = false
+        view.textContainerInset = NSSize(width: 36, height: 36)
+        view.string = "\(title)\n\n\(body)"
+        view.font = NSFont.systemFont(ofSize: 12)
+        view.textStorage?.setAttributedString(NSAttributedString(string: view.string, attributes: [
+            .font: NSFont.systemFont(ofSize: 12)
+        ]))
+        return view.dataWithPDF(inside: view.bounds)
     }
 
     func addNote() {
         let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? (notes.count + 1)
         let newNote = Note(title: "Note \(nextNumber)", text: "")
-        notes.append(newNote)
-
-        let folder = notesDirectory.appendingPathComponent(newNote.id.uuidString)
-        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-
-        selectedTab = notes.count - 1
+        withAnimation(.easeInOut(duration: 0.2)) {
+            notes.append(newNote)
+            selectedTab = notes.count - 1
+        }
         saveNotes()
     }
 
     func saveNotes() {
         let folderURL = savePath.deletingLastPathComponent()
         try? FileManager.default.createDirectory(at: folderURL, withIntermediateDirectories: true)
-
-        for note in notes {
-            let folder = notesDirectory.appendingPathComponent(note.id.uuidString)
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-        }
 
         if let data = try? JSONEncoder().encode(notes) {
             try? data.write(to: savePath)
@@ -438,61 +600,105 @@ struct ContentView: View {
     func loadNotes() -> [Note]? {
         Self.loadNotesStatic(savePath: savePath)
     }
+}
 
-    func insertImage() {
-        guard imagesEnabled, let current = activeIndex else { return }
-        let panel = NSOpenPanel()
-        panel.allowedFileTypes = NSImage.imageTypes
-        panel.allowsMultipleSelection = false
-        panel.begin { response in
-            guard response == .OK, let url = panel.url else { return }
+private struct TabsBarView: View {
+    @Binding var notes: [Note]
+    let filteredIndices: [Int]
+    @Binding var selectedTab: Int
 
-            let folder = notesDirectory.appendingPathComponent(notes[current].id.uuidString)
-            try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
+    @Binding var isEditingTabTitle: Bool
+    @Binding var editedTabTitle: String
+    @FocusState.Binding var isTextFieldFocused: Bool
 
-            let dest = folder.appendingPathComponent(url.lastPathComponent)
-            do {
-                if FileManager.default.fileExists(atPath: dest.path) {
-                    try FileManager.default.removeItem(at: dest)
+    let requestDelete: (Int) -> Void
+    let persist: () -> Void
+    let requestTogglePin: (Int) -> Void
+    let requestToggleLock: (Int) -> Void
+
+    var body: some View {
+        ScrollView(.horizontal, showsIndicators: false) {
+            HStack(spacing: 6) {
+                ForEach(filteredIndices, id: \.self) { index in
+                    tabItem(index: index)
                 }
-                try FileManager.default.copyItem(at: url, to: dest)
-                notes[current].images.append(url.lastPathComponent)
-                saveNotes()
-            } catch {
-                print("Failed to copy image:", error.localizedDescription)
             }
+            .padding(.horizontal)
+            .padding(.vertical, 2)
         }
     }
 
-    func handleDrop(providers: [NSItemProvider], index: Int) -> Bool {
-        guard imagesEnabled else { return false }
+    @ViewBuilder
+    private func tabItem(index: Int) -> some View {
+        if isEditingTabTitle && selectedTab == index {
+            TextField("", text: $editedTabTitle, onCommit: {
+                notes[index].title = editedTabTitle
+                isEditingTabTitle = false
+                persist()
+            })
+            .focused($isTextFieldFocused)
+            .textFieldStyle(PlainTextFieldStyle())
+            .padding(6)
+            .background(Color.gray.opacity(0.2))
+            .cornerRadius(6)
+            .fixedSize(horizontal: true, vertical: false)
+            .onChange(of: isTextFieldFocused) { _, focused in
+                guard !focused, isEditingTabTitle, selectedTab == index else { return }
+                let trimmed = editedTabTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !trimmed.isEmpty {
+                    notes[index].title = trimmed
+                    persist()
+                }
+                isEditingTabTitle = false
+            }
+            .onAppear {
+                DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+                    isTextFieldFocused = true
+                }
+            }
+        } else {
+            HStack(spacing: 6) {
+                if notes[index].isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
 
-        for provider in providers {
-            if provider.hasItemConformingToTypeIdentifier(UTType.fileURL.identifier) {
-                provider.loadItem(forTypeIdentifier: UTType.fileURL.identifier, options: nil) { item, _ in
-                    guard let data = item as? Data,
-                          let url = URL(dataRepresentation: data, relativeTo: nil) else { return }
-
-                    DispatchQueue.main.async {
-                        let folder = notesDirectory.appendingPathComponent(notes[index].id.uuidString)
-                        try? FileManager.default.createDirectory(at: folder, withIntermediateDirectories: true)
-
-                        let dest = folder.appendingPathComponent(url.lastPathComponent)
-                        do {
-                            if FileManager.default.fileExists(atPath: dest.path) {
-                                try FileManager.default.removeItem(at: dest)
-                            }
-                            try FileManager.default.copyItem(at: url, to: dest)
-                            notes[index].images.append(url.lastPathComponent)
-                            saveNotes()
-                        } catch {
-                            print("Drop copy failed", error.localizedDescription)
-                        }
+                Text(notes[index].title)
+                    .lineLimit(1)
+            }
+            .padding(6)
+                .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
+                .cornerRadius(6)
+                .fixedSize(horizontal: true, vertical: false)
+                .contextMenu {
+                    Button(notes[index].isPinned ? "Unpin" : "Pin") {
+                        requestTogglePin(index)
+                    }
+                    Button("Edit Title") {
+                        editedTabTitle = notes[index].title
+                        isEditingTabTitle = true
+                        selectedTab = index
+                    }
+                    Button(notes[index].isLocked ? "Remove Lock" : "Lock") {
+                        requestToggleLock(index)
+                    }
+                    Button("Delete Note", role: .destructive) {
+                        requestDelete(index)
                     }
                 }
-                return true
-            }
+                .onTapGesture(count: 2) {
+                    editedTabTitle = notes[index].title
+                    isEditingTabTitle = true
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        selectedTab = index
+                    }
+                }
+                .onTapGesture {
+                    withAnimation(.easeInOut(duration: 0.15)) {
+                        selectedTab = index
+                    }
+                }
         }
-        return false
     }
 }

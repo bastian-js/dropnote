@@ -5,8 +5,6 @@ struct AppSettings: Codable {
     var showInDock: Bool = true
     var startOnBoot: Bool = false
     var showWordCounter: Bool = true
-    var enableMarkdown: Bool = true
-    var enableImages: Bool = true
 }
 
 class SettingsManager {
@@ -39,9 +37,7 @@ class SettingsManager {
 
             let data = try JSONEncoder().encode(settings)
             try data.write(to: settingsPath, options: .atomic)
-            print("✅ Einstellungen gespeichert: \(settings)")
         } catch {
-            print("❌ Fehler beim Speichern der Einstellungen: \(error.localizedDescription)")
         }
     }
 
@@ -50,13 +46,10 @@ class SettingsManager {
             if FileManager.default.fileExists(atPath: settingsPath.path) {
                 let data = try Data(contentsOf: settingsPath)
                 settings = try JSONDecoder().decode(AppSettings.self, from: data)
-                print("✅ Einstellungen geladen: \(settings)")
             } else {
-                print("⚠ Keine Einstellungen gefunden, Standardwerte werden verwendet.")
                 saveSettings()
             }
         } catch {
-            print("❌ Fehler beim Laden der Einstellungen: \(error.localizedDescription)")
         }
     }
 

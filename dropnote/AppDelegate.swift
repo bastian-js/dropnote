@@ -1,10 +1,3 @@
-//
-//  AppDelegate.swift
-//  dropnote
-//
-//  Created by bastian-js on 10.03.25.
-//
-
 import Cocoa
 import SwiftUI
 import ServiceManagement
@@ -14,19 +7,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     var popover: NSPopover!
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Menüleisten-Item erstellen
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
 
         if let button = statusItem.button {
-            button.image = NSImage(named: "MenubarIcon") // ein einziges weißes Icon
+            button.image = NSImage(named: "MenubarIcon")
             button.image?.size = NSSize(width: 14, height: 14)
-            button.image?.isTemplate = true // Template-Modus aktiviert automatische Einfärbung
+            button.image?.isTemplate = true
             button.action = #selector(togglePopover(_:))
         }
-
-        // Popover konfigurieren
         popover = NSPopover()
-        popover.contentSize = NSSize(width: 300, height: 400)
+        popover.contentSize = NSSize(width: 320, height: 480)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: ContentView())
 
@@ -37,7 +27,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
         
-        applyStartupSetting() // ⬅️ Autostart prüfen & setzen
+        applyStartupSetting()
     }
 
     @objc func togglePopover(_ sender: AnyObject?) {
@@ -56,7 +46,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     
     func applyStartupSetting() {
         let shouldStartOnBoot = SettingsManager.shared.settings.startOnBoot
-        print("🌀 Startup setting =", shouldStartOnBoot)
         setLaunchAtLogin(enabled: shouldStartOnBoot)
     }
 
@@ -64,13 +53,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         do {
             if enabled {
                 try SMAppService.mainApp.register()
-                print("✅ App registered for launch at login")
             } else {
                 try SMAppService.mainApp.unregister()
-                print("⛔️ App unregistered from launch at login")
             }
         } catch {
-            print("❌ Autostart error:", error.localizedDescription)
         }
     }
 
