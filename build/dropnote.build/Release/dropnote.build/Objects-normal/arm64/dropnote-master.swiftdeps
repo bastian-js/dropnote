@@ -1,0 +1,14 @@
+version: "Apple Swift version 6.1 (swiftlang-6.1.0.110.21 clang-1700.0.13.3)"
+options: "75a7f96c8df16d250b87c56472965c7682267a2b66350bd7993786f53858889b"
+build_start_time: [1770198767, 362026000]
+build_end_time: [1770198773, 889634000]
+inputs:
+  "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/DerivedSources/GeneratedAssetSymbols.swift": [1770198744, 883908904]
+  "/Users/bastian/Git/dropnote/dropnote/AppDelegate.swift": [1770189779, 712823289]
+  "/Users/bastian/Git/dropnote/dropnote/AppSettings.swift": [1770189779, 798821810]
+  "/Users/bastian/Git/dropnote/dropnote/ContentView.swift": [1770198668, 901767828]
+  "/Users/bastian/Git/dropnote/dropnote/FormattingToolbar.swift": [1770198668, 900816458]
+  "/Users/bastian/Git/dropnote/dropnote/NotesAuth.swift": [1770189779, 712868454]
+  "/Users/bastian/Git/dropnote/dropnote/RichTextEditor.swift": [1770198732, 414706523]
+  "/Users/bastian/Git/dropnote/dropnote/SettingsView.swift": [1770109454, 659852308]
+  "/Users/bastian/Git/dropnote/dropnote/dropnoteApp.swift": [1770189779, 764077935]

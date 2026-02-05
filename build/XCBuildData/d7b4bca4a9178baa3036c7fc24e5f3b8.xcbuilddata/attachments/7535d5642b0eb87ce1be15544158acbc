@@ -1,0 +1,55 @@
+{
+  "" : {
+    "const-values" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/dropnote-master.swiftconstvalues",
+    "dependencies" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/dropnote-master.d",
+    "diagnostics" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/dropnote-master.dia",
+    "emit-module-dependencies" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/dropnote-master-emit-module.d",
+    "emit-module-diagnostics" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/dropnote-master-emit-module.dia",
+    "swift-dependencies" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/dropnote-master.swiftdeps"
+  },
+  "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/DerivedSources/GeneratedAssetSymbols.swift" : {
+    "index-unit-output-path" : "/dropnote.build/Release/dropnote.build/Objects-normal/arm64/GeneratedAssetSymbols.o",
+    "llvm-bc" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/GeneratedAssetSymbols.bc",
+    "object" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/GeneratedAssetSymbols.o"
+  },
+  "/Users/bastian/Git/dropnote/dropnote/AppDelegate.swift" : {
+    "index-unit-output-path" : "/dropnote.build/Release/dropnote.build/Objects-normal/arm64/AppDelegate.o",
+    "llvm-bc" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/AppDelegate.bc",
+    "object" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/AppDelegate.o"
+  },
+  "/Users/bastian/Git/dropnote/dropnote/AppSettings.swift" : {
+    "index-unit-output-path" : "/dropnote.build/Release/dropnote.build/Objects-normal/arm64/AppSettings.o",
+    "llvm-bc" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/AppSettings.bc",
+    "object" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/AppSettings.o"
+  },
+  "/Users/bastian/Git/dropnote/dropnote/ContentView.swift" : {
+    "index-unit-output-path" : "/dropnote.build/Release/dropnote.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/ContentView.o"
+  },
+  "/Users/bastian/Git/dropnote/dropnote/FormattingToolbar.swift" : {
+    "index-unit-output-path" : "/dropnote.build/Release/dropnote.build/Objects-normal/arm64/FormattingToolbar.o",
+    "llvm-bc" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/FormattingToolbar.bc",
+    "object" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/FormattingToolbar.o"
+  },
+  "/Users/bastian/Git/dropnote/dropnote/NotesAuth.swift" : {
+    "index-unit-output-path" : "/dropnote.build/Release/dropnote.build/Objects-normal/arm64/NotesAuth.o",
+    "llvm-bc" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/NotesAuth.bc",
+    "object" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/NotesAuth.o"
+  },
+  "/Users/bastian/Git/dropnote/dropnote/RichTextEditor.swift" : {
+    "index-unit-output-path" : "/dropnote.build/Release/dropnote.build/Objects-normal/arm64/RichTextEditor.o",
+    "llvm-bc" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/RichTextEditor.bc",
+    "object" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/RichTextEditor.o"
+  },
+  "/Users/bastian/Git/dropnote/dropnote/SettingsView.swift" : {
+    "index-unit-output-path" : "/dropnote.build/Release/dropnote.build/Objects-normal/arm64/SettingsView.o",
+    "llvm-bc" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/SettingsView.bc",
+    "object" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/SettingsView.o"
+  },
+  "/Users/bastian/Git/dropnote/dropnote/dropnoteApp.swift" : {
+    "index-unit-output-path" : "/dropnote.build/Release/dropnote.build/Objects-normal/arm64/dropnoteApp.o",
+    "llvm-bc" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/dropnoteApp.bc",
+    "object" : "/Users/bastian/Git/dropnote/build/dropnote.build/Release/dropnote.build/Objects-normal/arm64/dropnoteApp.o"
+  }
+}

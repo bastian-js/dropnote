@@ -8,6 +8,7 @@ struct Note: Codable, Identifiable {
     var text: String
     var isPinned: Bool = false
     var isLocked: Bool = false
+    var attributedTextRTF: Data?
 }
 
 class ContentViewController: NSObject {
@@ -37,6 +38,7 @@ class ContentViewController: NSObject {
 struct ContentView: View {
     @State private var notes: [Note] = []
     @State private var selectedTab: Int = 0
+    @State private var isLoadingNotes: Bool = true
 
     @State private var isEditingTabTitle: Bool = false
     @State private var editedTabTitle: String = ""
@@ -110,11 +112,9 @@ struct ContentView: View {
     init() {
         let s = SettingsManager.shared.settings
         _showWordCounter = State(initialValue: s.showWordCounter)
-
-        if let loaded = ContentView.loadNotesStatic(savePath: FileManager.default.homeDirectoryForCurrentUser
-            .appendingPathComponent("Library/Application Support/DropNote/notes.json")) {
-            _notes = State(initialValue: loaded)
-        }
+        // Start with a dummy note so UI renders immediately, will be replaced when notes load
+        _notes = State(initialValue: [Note(title: "Loading...", text: "")])
+        _isLoadingNotes = State(initialValue: true)
 
         let showInDock = s.showInDock
         NSApplication.shared.setActivationPolicy(showInDock ? .regular : .accessory)
@@ -122,6 +122,24 @@ struct ContentView: View {
 
     var body: some View {
         mainContent
+        .onAppear {
+            // Load notes asynchronously if not already loaded
+            if isLoadingNotes {
+                DispatchQueue.global(qos: .userInitiated).async {
+                    if let loaded = ContentView.loadNotesStatic(savePath: FileManager.default.homeDirectoryForCurrentUser
+                        .appendingPathComponent("Library/Application Support/DropNote/notes.json")) {
+                        DispatchQueue.main.async {
+                            self.notes = loaded
+                            self.isLoadingNotes = false
+                        }
+                    } else {
+                        DispatchQueue.main.async {
+                            self.isLoadingNotes = false
+                        }
+                    }
+                }
+            }
+        }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
             closeDropdownsAndEditing()
         }
@@ -146,7 +164,10 @@ struct ContentView: View {
         VStack(spacing: 6) {
             searchBar
             tabsBar
+
             noteArea
+                .frame(maxHeight: .infinity)
+
             bottomBar
                 .padding(.horizontal, 10)
                 .padding(.bottom, 8)
@@ -281,7 +302,7 @@ struct ContentView: View {
     @ViewBuilder
     private func noteAreaContent(current: Int) -> some View {
         VStack(spacing: 0) {
-            ZStack(alignment: .bottomLeading) {
+            ZStack(alignment: .topLeading) {
                 RoundedRectangle(cornerRadius: 12)
                     .fill(.thinMaterial)
                     .overlay(
@@ -308,32 +329,82 @@ struct ContentView: View {
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                         .padding(16)
                     } else {
-                        TextEditor(text: $notes[current].text)
-                            .padding(EdgeInsets(top: 12, leading: 14, bottom: 12, trailing: 10))
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-                            .lineSpacing(6)
-                            .font(.system(size: 15))
-                            .scrollContentBackground(.hidden)
-                            .onChange(of: notes[current].text) { _, _ in
-                                scheduleSave()
-                            }
+                        VStack(spacing: 0) {
+                            FormattingToolbar(
+                                onBoldTap: {
+                                    if let window = NSApplication.shared.keyWindow,
+                                       let textView = RichTextEditor.getTextViewFromWindow(window) {
+                                        RichTextEditor.applyBold(to: textView)
+                                        notes[current].text = textView.string
+                                        if let rtfData = try? textView.attributedString().data(from: NSRange(location: 0, length: textView.attributedString().length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]) {
+                                            notes[current].attributedTextRTF = rtfData
+                                        }
+                                        scheduleSave()
+                                    }
+                                },
+                                onItalicTap: {
+                                    if let window = NSApplication.shared.keyWindow,
+                                       let textView = RichTextEditor.getTextViewFromWindow(window) {
+                                        RichTextEditor.applyItalic(to: textView)
+                                        notes[current].text = textView.string
+                                        if let rtfData = try? textView.attributedString().data(from: NSRange(location: 0, length: textView.attributedString().length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]) {
+                                            notes[current].attributedTextRTF = rtfData
+                                        }
+                                        scheduleSave()
+                                    }
+                                },
+                                onUnderlineTap: {
+                                    if let window = NSApplication.shared.keyWindow,
+                                       let textView = RichTextEditor.getTextViewFromWindow(window) {
+                                        RichTextEditor.applyUnderline(to: textView)
+                                        notes[current].text = textView.string
+                                        if let rtfData = try? textView.attributedString().data(from: NSRange(location: 0, length: textView.attributedString().length), documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]) {
+                                            notes[current].attributedTextRTF = rtfData
+                                        }
+                                        scheduleSave()
+                                    }
+                                },
+                                onUpdateFormats: { _, _, _ in }
+                            )
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 4)
+                            
+                            RichTextEditor(
+                                text: $notes[current].text,
+                                attributedTextRTF: notes[current].attributedTextRTF,
+                                onTextChange: scheduleSave,
+                                onAttributedChange: { rtfData in
+                                    notes[current].attributedTextRTF = rtfData
+                                    scheduleSave()
+                                }
+                            )
+                            .padding(EdgeInsets(top: 4, leading: 8, bottom: 0, trailing: 6))
+                            .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        }
                     }
                 }
                 .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
 
-                if showWordCounter {
-                    Text("Words: \(notes[current].text.split { $0.isWhitespace || $0.isNewline }.count)")
-                        .font(.footnote)
-                        .foregroundColor(.secondary)
+                if showWordCounter && !notes[current].isLocked {
+                    VStack {
+                        Spacer()
+                        HStack {
+                            Text("Words: \(notes[current].text.split { $0.isWhitespace || $0.isNewline }.count)")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
                         .padding(.leading, 12)
                         .padding(.bottom, 10)
+                    }
                 }
             }
             .frame(maxHeight: .infinity)
         }
         .frame(maxHeight: .infinity)
         .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.top, 0)
+        .padding(.bottom, 8)
     }
 
     @ViewBuilder
@@ -549,7 +620,7 @@ struct ContentView: View {
         panel.begin { response in
             guard response == .OK, let url = panel.url else { return }
             do {
-                let pdf = makeSimplePDFData(title: note.title, body: note.text)
+                let pdf = makeSimplePDFData(title: note.title, body: note.text, attributedTextRTF: note.attributedTextRTF)
                 try pdf.write(to: url, options: .atomic)
             } catch {
                 print("Export PDF failed:", error.localizedDescription)
@@ -557,15 +628,26 @@ struct ContentView: View {
         }
     }
 
-    private func makeSimplePDFData(title: String, body: String) -> Data {
+    private func makeSimplePDFData(title: String, body: String, attributedTextRTF: Data?) -> Data {
         let view = NSTextView(frame: NSRect(x: 0, y: 0, width: 612, height: 792))
         view.isEditable = false
         view.textContainerInset = NSSize(width: 36, height: 36)
-        view.string = "\(title)\n\n\(body)"
-        view.font = NSFont.systemFont(ofSize: 12)
-        view.textStorage?.setAttributedString(NSAttributedString(string: view.string, attributes: [
-            .font: NSFont.systemFont(ofSize: 12)
-        ]))
+        
+        // Create attributed string for title
+        let titleAttr = NSAttributedString(string: "\(title)\n\n", attributes: [.font: NSFont.systemFont(ofSize: 14, weight: .semibold)])
+        let mutableAttr = NSMutableAttributedString(attributedString: titleAttr)
+        
+        // Try to use formatted body if RTF available
+        if let rtfData = attributedTextRTF,
+           let bodyAttr = try? NSAttributedString(data: rtfData, options: [.documentType: NSAttributedString.DocumentType.rtf], documentAttributes: nil) {
+            mutableAttr.append(bodyAttr)
+        } else {
+            // Fallback to plain text
+            let bodyAttr = NSAttributedString(string: body, attributes: [.font: NSFont.systemFont(ofSize: 12)])
+            mutableAttr.append(bodyAttr)
+        }
+        
+        view.textStorage?.setAttributedString(mutableAttr)
         return view.dataWithPDF(inside: view.bounds)
     }
 
