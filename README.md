@@ -5,6 +5,8 @@
 ![Menu%20Bar%20App](https://img.shields.io/badge/Menu%20Bar-App-blue)
 ![License](https://img.shields.io/badge/License-Non--Commercial-lightgrey)
 
+<a href="https://www.producthunt.com/products/dropnote-2?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-dropnote-2" target="_blank" rel="noopener noreferrer"><img alt="DropNote - A lightweight macOS menu bar app for quick notes. | Product Hunt" width="250" height="54" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1072286&amp;theme=neutral&amp;t=1770407004393"></a>
+
 **DropNote** is a lightweight and focused macOS menu bar app for quick notes.  
 It stays out of your way while keeping your thoughts instantly accessible.
 
