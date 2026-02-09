@@ -39,29 +39,15 @@ struct RichTextEditor: NSViewRepresentable {
     }
     
     func makeNSView(context: Context) -> NSScrollView {
-    let scrollView = createScrollView()
-    let textView = createTextView()
-    textView.delegate = context.coordinator
+        let scrollView = createScrollView()
+        let textView = createTextView()
+        textView.delegate = context.coordinator
 
-    let container = NSView()
-    container.translatesAutoresizingMaskIntoConstraints = false
-    textView.translatesAutoresizingMaskIntoConstraints = false
+        scrollView.documentView = textView
 
-    container.addSubview(textView)
-
-    NSLayoutConstraint.activate([
-        textView.leadingAnchor.constraint(equalTo: container.leadingAnchor, constant: 12),
-        textView.trailingAnchor.constraint(equalTo: container.trailingAnchor, constant: -12),
-        textView.topAnchor.constraint(equalTo: container.topAnchor, constant: 8),
-        textView.bottomAnchor.constraint(equalTo: container.bottomAnchor, constant: -8),
-        textView.widthAnchor.constraint(equalTo: container.widthAnchor, constant: -24)
-    ])
-
-    scrollView.documentView = container
-
-    loadAttributedText(textView, context: context)
-    return scrollView
-}
+        loadAttributedText(textView, context: context)
+        return scrollView
+    }
 
     
     func updateNSView(_ nsView: NSScrollView, context: Context) {
@@ -81,22 +67,15 @@ struct RichTextEditor: NSViewRepresentable {
     // MARK: - Private Methods
     
     private func createScrollView() -> NSScrollView {
-    let scrollView = NSScrollView()
-    scrollView.hasVerticalScroller = true
-    scrollView.hasHorizontalScroller = false
-    scrollView.autohidesScrollers = true
-    scrollView.backgroundColor = .clear
-    scrollView.drawsBackground = false
+        let scrollView = NSScrollView()
+        scrollView.hasVerticalScroller = true
+        scrollView.hasHorizontalScroller = false
+        scrollView.autohidesScrollers = true
+        scrollView.backgroundColor = .clear
+        scrollView.drawsBackground = false
 
-    scrollView.contentInsets = NSEdgeInsets(
-        top: 8,
-        left: 12,
-        bottom: 8,
-        right: 12
-    )
-
-    return scrollView
-}
+        return scrollView
+    }
 
     
     private func createTextView() -> NSTextView {
