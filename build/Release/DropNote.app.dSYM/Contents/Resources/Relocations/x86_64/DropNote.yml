@@ -1,5 +1,0 @@
----
-triple:          'x86_64-apple-darwin'
-binary-path:     '/Users/bastian/Git/dropnote/build/Release/DropNote.app/Contents/MacOS/DropNote'
-relocations:     []
-...

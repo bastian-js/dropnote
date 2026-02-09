@@ -2,28 +2,59 @@ import Cocoa
 import SwiftUI
 import ServiceManagement
 
-class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate {
     static var shared: AppDelegate!
     
     var statusItem: NSStatusItem!
     var popover: NSPopover!
-
+    
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
         
+        setupStatusBar()
+        setupPopover()
+        setupNotifications()
+        applyStartupSetting()
+    }
+    
+    @objc func togglePopover(_ sender: AnyObject?) {
+        guard let button = statusItem.button else {
+            return
+        }
+        
+        if popover.isShown {
+            popover.performClose(sender)
+        } else {
+            popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+        }
+    }
+    
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+        HotKeyManager.shared.unregisterGlobalSearchHotKey()
+    }
+    
+    // MARK: - Private Methods
+    
+    private func setupStatusBar() {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.squareLength)
-
+        
         if let button = statusItem.button {
             button.image = NSImage(named: "MenubarIcon")
             button.image?.size = NSSize(width: 14, height: 14)
             button.image?.isTemplate = true
             button.action = #selector(togglePopover(_:))
         }
+    }
+    
+    private func setupPopover() {
         popover = NSPopover()
         popover.contentSize = NSSize(width: 320, height: 480)
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: ContentView())
-
+    }
+    
+    private func setupNotifications() {
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(handleAppDidResignActive),
@@ -31,43 +62,24 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
         
-        // Register global search hotkey (CMD+OPTION+F)
         HotKeyManager.shared.registerGlobalSearchHotKey()
         
         // Initialize search index
         DispatchQueue.global(qos: .userInitiated).async {
-            SearchIndexManager.shared.indexNotes()
-        }
-        
-        applyStartupSetting()
-    }
-
-    @objc func togglePopover(_ sender: AnyObject?) {
-        print("togglePopover called, isShown: \(popover.isShown)")
-        if let button = statusItem.button {
-            if popover.isShown {
-                print("Closing popover")
-                popover.performClose(sender)
-            } else {
-                print("Opening popover")
-                popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
-                print("Popover should now be visible: \(popover.isShown)")
-            }
-        } else {
-            print("No status item button found!")
+            NoteSearchService.shared.indexNotes()
         }
     }
-
+    
     @objc private func handleAppDidResignActive() {
         popover.performClose(nil)
     }
     
-    func applyStartupSetting() {
-        let shouldStartOnBoot = SettingsManager.shared.settings.startOnBoot
+    private func applyStartupSetting() {
+        let shouldStartOnBoot = SettingsService.shared.settings.startOnBoot
         setLaunchAtLogin(enabled: shouldStartOnBoot)
     }
-
-    func setLaunchAtLogin(enabled: Bool) {
+    
+    private func setLaunchAtLogin(enabled: Bool) {
         do {
             if enabled {
                 try SMAppService.mainApp.register()
@@ -75,11 +87,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
                 try SMAppService.mainApp.unregister()
             }
         } catch {
+            // Silently fail - login launch is not critical
         }
-    }
-
-    deinit {
-        NotificationCenter.default.removeObserver(self)
-        HotKeyManager.shared.unregisterGlobalSearchHotKey()
     }
 }
