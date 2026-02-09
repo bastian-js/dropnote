@@ -9,6 +9,11 @@ struct Note: Codable, Identifiable {
     var isPinned: Bool = false
     var isLocked: Bool = false
     var attributedTextRTF: Data?
+    var lastModified: Date?
+    
+    mutating func updateModifiedDate() {
+        lastModified = Date()
+    }
 }
 
 class ContentViewController: NSObject {
@@ -36,6 +41,8 @@ class ContentViewController: NSObject {
 }
 
 struct ContentView: View {
+    @StateObject private var searchManager = SearchManager.shared
+    
     @State private var notes: [Note] = []
     @State private var selectedTab: Int = 0
     @State private var isLoadingNotes: Bool = true
@@ -54,6 +61,8 @@ struct ContentView: View {
     @FocusState private var isSearchFieldFocused: Bool
 
     @State private var showEditorToolbar: Bool = true
+    
+    @State private var noteIDToOpen: UUID? = nil
 
     private let editorHeight: CGFloat = 200
     private let toolbarHeight: CGFloat = 38
@@ -105,8 +114,14 @@ struct ContentView: View {
     }
 
     private var activeIndex: Int? {
-        if filteredIndices.contains(selectedTab) { return selectedTab }
-        return filteredIndices.first
+        print("DEBUG activeIndex: selectedTab=\(selectedTab), filteredIndices=\(filteredIndices), contains=\(filteredIndices.contains(selectedTab))")
+        if filteredIndices.contains(selectedTab) { 
+            print("DEBUG activeIndex returning selectedTab: \(selectedTab)")
+            return selectedTab 
+        }
+        let firstIndex = filteredIndices.first
+        print("DEBUG activeIndex returning first: \(String(describing: firstIndex))")
+        return firstIndex
     }
 
     init() {
@@ -131,6 +146,16 @@ struct ContentView: View {
                         DispatchQueue.main.async {
                             self.notes = loaded
                             self.isLoadingNotes = false
+                            
+                            // If there's a pending note to open from search, open it now
+                            if let noteIDToOpen = self.searchManager.noteIDToOpen,
+                               let index = self.notes.firstIndex(where: { $0.id == noteIDToOpen }) {
+                                print("Opening note from SearchManager at index \(index): \(self.notes[index].title)")
+                                self.searchText = ""
+                                self.isSearching = false
+                                self.selectedTab = index
+                                self.searchManager.noteIDToOpen = nil
+                            }
                         }
                     } else {
                         DispatchQueue.main.async {
@@ -141,7 +166,32 @@ struct ContentView: View {
             }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-            closeDropdownsAndEditing()
+            // Close popover when app becomes inactive
+            if let appDelegate = AppDelegate.shared, appDelegate.popover?.isShown == true {
+                appDelegate.popover?.performClose(nil)
+            }
+        }
+        .onReceive(searchManager.$noteIDToOpen) { noteID in
+            // When SearchManager notifies of a note to open
+            if let noteID = noteID, !isLoadingNotes {
+                print("ContentView: SearchManager changed noteIDToOpen to \(noteID)")
+                
+                if let index = notes.firstIndex(where: { $0.id == noteID }) {
+                    print("Found note at index: \(index), title: \(notes[index].title)")
+                    
+                    // Clear search state FIRST
+                    searchText = ""
+                    isSearching = false
+                    
+                    // Then select the tab
+                    withAnimation {
+                        selectedTab = index
+                    }
+                    
+                    // Clear the request
+                    searchManager.noteIDToOpen = nil
+                }
+            }
         }
         .onDisappear { saveNotes() }
         .alert("Delete note?", isPresented: $showDeleteAlert, presenting: deleteIndex) { index in
@@ -531,6 +581,10 @@ struct ContentView: View {
 
 
     private func scheduleSave() {
+        if let current = activeIndex {
+            notes[current].updateModifiedDate()
+        }
+        
         pendingSaveWorkItem?.cancel()
         isSaving = true
 
@@ -538,6 +592,8 @@ struct ContentView: View {
             DispatchQueue.main.async {
                 saveNotes()
                 lastSavedAt = Date()
+                
+                SearchIndexManager.shared.indexNotes()
                 
                 savingStatusTimer?.invalidate()
                 savingStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
@@ -653,12 +709,14 @@ struct ContentView: View {
 
     func addNote() {
         let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? (notes.count + 1)
-        let newNote = Note(title: "Note \(nextNumber)", text: "")
+        var newNote = Note(title: "Note \(nextNumber)", text: "")
+        newNote.updateModifiedDate()
         withAnimation(.easeInOut(duration: 0.2)) {
             notes.append(newNote)
             selectedTab = notes.count - 1
         }
         saveNotes()
+        SearchIndexManager.shared.indexNotes()
     }
 
     func saveNotes() {
@@ -673,9 +731,26 @@ struct ContentView: View {
     static func loadNotesStatic(savePath: URL) -> [Note]? {
         guard FileManager.default.fileExists(atPath: savePath.path),
               let data = try? Data(contentsOf: savePath),
-              let decoded = try? JSONDecoder().decode([Note].self, from: data) else {
+              var decoded = try? JSONDecoder().decode([Note].self, from: data) else {
             return nil
         }
+        
+        // Ensure all notes have a lastModified date
+        var needsSave = false
+        for i in 0..<decoded.count {
+            if decoded[i].lastModified == nil {
+                decoded[i].lastModified = Date()
+                needsSave = true
+            }
+        }
+        
+        // Save back if we added dates
+        if needsSave {
+            if let updatedData = try? JSONEncoder().encode(decoded) {
+                try? updatedData.write(to: savePath)
+            }
+        }
+        
         return decoded
     }
 
