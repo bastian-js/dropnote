@@ -73,7 +73,7 @@ struct TabsBar: View {
                 .lineLimit(1)
         }
         .padding(6)
-        .background(selectedTab == index ? Color.accentColor.opacity(0.3) : Color.clear)
+        .background(selectedTab == index ? Color.accentColor.opacity(0.22) : Color.clear)
         .cornerRadius(6)
         .fixedSize(horizontal: true, vertical: false)
         .contextMenu {

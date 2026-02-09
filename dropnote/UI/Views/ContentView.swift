@@ -22,6 +22,7 @@ struct ContentView: View {
     
     @State private var showEditorToolbar: Bool = true
     @State private var noteIDToOpen: UUID?
+    @State private var showSettingsMenu: Bool = false
     
     @State private var isSaving: Bool = false
     @State private var lastSavedAt: Date?
@@ -136,22 +137,17 @@ struct ContentView: View {
     @ViewBuilder
     private var searchBar: some View {
         HStack(spacing: 8) {
-            Menu {
-                Button("Settings") {
-                    openSettings(nil)
-                }
-                Divider()
-                Button("Quit DropNote") {
-                    quitApp(nil)
-                }
+            Button {
+                showSettingsMenu.toggle()
             } label: {
                 Image(systemName: "gearshape")
                     .font(.system(size: 15, weight: .regular))
                     .foregroundColor(.secondary)
             }
             .buttonStyle(PlainButtonStyle())
-            .menuStyle(BorderlessButtonMenuStyle())
-            .menuIndicator(.hidden)
+            .popover(isPresented: $showSettingsMenu, arrowEdge: .top) {
+                settingsMenu
+            }
             
             if isSearching {
                 TextField("Search", text: $searchText)
@@ -284,6 +280,7 @@ struct ContentView: View {
     // MARK: - Private Methods
     
     private func closeDropdownsAndEditing() {
+        showSettingsMenu = false
         if isSearching {
             withAnimation {
                 isSearching = false
@@ -294,6 +291,40 @@ struct ContentView: View {
             isTextFieldFocused = false
             isEditingTabTitle = false
         }
+    }
+
+    @ViewBuilder
+    private var settingsMenu: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            settingsMenuButton(title: "Settings", icon: "gearshape") {
+                showSettingsMenu = false
+                openSettings(nil)
+            }
+            Divider()
+            settingsMenuButton(title: "Quit DropNote", icon: "power") {
+                showSettingsMenu = false
+                quitApp(nil)
+            }
+        }
+        .padding(12)
+        .frame(width: 200)
+    }
+    
+    @ViewBuilder
+    private func settingsMenuButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 13, weight: .semibold))
+                Text(title)
+                    .font(.system(size: 13, weight: .semibold))
+                Spacer()
+            }
+            .padding(.vertical, 6)
+            .padding(.horizontal, 8)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
     
     private func loadNotesIfNeeded() {

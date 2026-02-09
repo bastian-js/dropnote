@@ -65,7 +65,7 @@ struct NoteEditor: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.4), lineWidth: 1)
+                .stroke(Color.gray.opacity(0.28), lineWidth: 1)
         )
         .frame(maxHeight: .infinity)
     }
