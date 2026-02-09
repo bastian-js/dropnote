@@ -62,7 +62,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
         
-        HotKeyManager.shared.registerGlobalSearchHotKey()
+        let hotKey = SettingsService.shared.settings.searchHotKey
+        HotKeyManager.shared.registerGlobalSearchHotKey(
+            keyCode: hotKey.keyCode,
+            modifiers: hotKey.modifiers
+        )
         
         // Initialize search index
         DispatchQueue.global(qos: .userInitiated).async {

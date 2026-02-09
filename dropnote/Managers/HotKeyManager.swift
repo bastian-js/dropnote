@@ -9,30 +9,10 @@ final class HotKeyManager {
     
     private init() {}
     
-    func registerGlobalSearchHotKey() {
-        // CMD + OPTION + F
-        let keyCode: UInt32 = 3 // F key
-        let modifiers: UInt32 = UInt32(cmdKey | optionKey)
-        
-        var eventType = EventTypeSpec(
-            eventClass: OSType(kEventClassKeyboard),
-            eventKind: UInt32(kEventHotKeyPressed)
-        )
-        
-        var handler: EventHandlerRef?
-        InstallEventHandler(
-            GetApplicationEventTarget(),
-            { (nextHandler, event, userData) -> OSStatus in
-                HotKeyManager.shared.handleHotKeyEvent()
-                return noErr
-            },
-            1,
-            &eventType,
-            nil,
-            &handler
-        )
-        
-        eventHandler = handler
+    @discardableResult
+    func registerGlobalSearchHotKey(keyCode: UInt32, modifiers: UInt32) -> OSStatus {
+        unregisterGlobalSearchHotKey()
+        installEventHandlerIfNeeded()
         
         var hotKeyID = EventHotKeyID(signature: OSType(0x48544B59), id: 1) // 'HTKY'
         var hotKeyRef: EventHotKeyRef?
@@ -49,6 +29,13 @@ final class HotKeyManager {
         if status == noErr {
             self.hotKeyRef = hotKeyRef
         }
+        
+        return status
+    }
+    
+    func updateGlobalSearchHotKey(keyCode: UInt32, modifiers: UInt32) -> Bool {
+        let status = registerGlobalSearchHotKey(keyCode: keyCode, modifiers: modifiers)
+        return status == noErr
     }
     
     func unregisterGlobalSearchHotKey() {
@@ -61,6 +48,32 @@ final class HotKeyManager {
             RemoveEventHandler(eventHandler)
             self.eventHandler = nil
         }
+    }
+    
+    private func installEventHandlerIfNeeded() {
+        guard eventHandler == nil else {
+            return
+        }
+        
+        var eventType = EventTypeSpec(
+            eventClass: OSType(kEventClassKeyboard),
+            eventKind: UInt32(kEventHotKeyPressed)
+        )
+        
+        var handler: EventHandlerRef?
+        InstallEventHandler(
+            GetApplicationEventTarget(),
+            { (_, _, _) -> OSStatus in
+                HotKeyManager.shared.handleHotKeyEvent()
+                return noErr
+            },
+            1,
+            &eventType,
+            nil,
+            &handler
+        )
+        
+        eventHandler = handler
     }
     
     private func handleHotKeyEvent() {
