@@ -1,12 +1,14 @@
 import Cocoa
 import SwiftUI
 import ServiceManagement
+import ObjectiveC
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static var shared: AppDelegate!
     
     var statusItem: NSStatusItem!
     var popover: NSPopover!
+    var onboardingWindow: NSWindow?
     
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -15,6 +17,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupPopover()
         setupNotifications()
         applyStartupSetting()
+        checkAndShowOnboarding()
     }
     
     @objc func togglePopover(_ sender: AnyObject?) {
@@ -83,6 +86,56 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setLaunchAtLogin(enabled: shouldStartOnBoot)
     }
     
+    private func checkAndShowOnboarding() {
+        let hasCompletedOnboarding = SettingsService.shared.settings.hasCompletedOnboarding
+        
+        if !hasCompletedOnboarding {
+            showOnboardingWindow()
+        }
+    }
+    
+    private func showOnboardingWindow() {
+        let window = NSWindow(
+            contentRect: NSRect(x: 0, y: 0, width: 900, height: 700),
+            styleMask: [.titled, .closable, .fullSizeContentView],
+            backing: .buffered,
+            defer: false
+        )
+        
+        window.title = "DropNote Onboarding"
+        window.isReleasedWhenClosed = false
+        window.level = .floating
+        window.collectionBehavior = [.canJoinAllSpaces]
+        window.isMovableByWindowBackground = true
+        window.hasShadow = true
+        
+        // Modern window styling
+        window.titlebarAppearsTransparent = true
+        window.titleVisibility = .hidden
+        window.isOpaque = false
+        window.backgroundColor = NSColor.clear
+        
+        if #available(macOS 12.0, *) {
+            window.toolbarStyle = .unified
+        }
+        
+        window.center()
+        
+        let onboardingView = OnboardingView()
+        let hostingController = NSHostingController(rootView: onboardingView)
+        hostingController.view.wantsLayer = true
+        window.contentViewController = hostingController
+        
+        // Set up window delegate to handle close without completion
+        let delegate = OnboardingWindowDelegate()
+        window.delegate = delegate
+        objc_setAssociatedObject(window, "onboardingDelegate", delegate, .OBJC_ASSOCIATION_RETAIN)
+        
+        self.onboardingWindow = window
+        window.makeKeyAndOrderFront(nil)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+    
     private func setLaunchAtLogin(enabled: Bool) {
         do {
             if enabled {
@@ -93,5 +146,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         } catch {
             // Silently fail - login launch is not critical
         }
+    }
+}
+
+// MARK: - Onboarding Window Delegate
+class OnboardingWindowDelegate: NSObject, NSWindowDelegate {
+    func windowWillClose(_ notification: Notification) {
+        // Reset onboarding if window is closed without completing
+        guard let window = notification.object as? NSWindow else { return }
+        
+        // Only reset if onboarding wasn't completed (handled in OnboardingView)
+        // The OnboardingView will determine whether to reset or complete based on how it was closed
     }
 }

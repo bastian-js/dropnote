@@ -18,4 +18,5 @@ struct AppSettings: Codable {
     var startOnBoot: Bool = false
     var showWordCounter: Bool = true
     var searchHotKey: HotKeySettings = .default
+    var hasCompletedOnboarding: Bool = false
 }
