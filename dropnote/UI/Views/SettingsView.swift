@@ -155,7 +155,7 @@ struct SettingsView: View {
                 }
             }
             
-            Text("Current version: 1.2")
+            Text("Current version: 2.0")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.top, 6)
