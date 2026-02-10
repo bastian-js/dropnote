@@ -1,0 +1,80 @@
+# ================================
+# macOS
+# ================================
+.DS_Store
+.AppleDouble
+.LSOverride
+Icon?
+
+# ================================
+# Xcode user data
+# ================================
+*.xcuserdata
+*.xcuserstate
+*.xccheckout
+*.xcscmblueprint
+
+# ================================
+# Build artifacts
+# ================================
+build/
+DerivedData/
+*.ipa
+*.dSYM
+*.dSYM.zip
+
+# ================================
+# Swift Package Manager
+# ================================
+.build/
+Packages/
+Package.resolved
+
+# ================================
+# CocoaPods
+# ================================
+Pods/
+Podfile.lock
+
+# ================================
+# Carthage
+# ================================
+Carthage/Build/
+
+# ================================
+# fastlane
+# ================================
+fastlane/report.xml
+fastlane/Preview.html
+fastlane/screenshots/
+fastlane/test_output/
+
+# ================================
+# Logs & temp files
+# ================================
+*.log
+*.tmp
+*.swp
+*.swo
+
+# ================================
+# Environment / Secrets
+# ================================
+.env
+.env*
+*.key
+*.cer
+*.p12
+
+# ================================
+# Xcode playgrounds & previews
+# ================================
+timeline.xctimeline
+playground.xcworkspace
+*.preview-thumbnails
+
+# ================================
+# Crash logs
+# ================================
+crashlogs/
+
