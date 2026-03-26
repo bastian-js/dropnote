@@ -29,9 +29,21 @@ final class SearchWindowController: NSWindowController {
         window.collectionBehavior = [.canJoinAllSpaces, .stationary]
         window.isMovableByWindowBackground = true
         window.hasShadow = true
-        window.contentView = NSHostingView(rootView: SearchWindowView())
+        window.contentView = NSHostingView(rootView: Self.makeSearchRootView())
+        Self.applyThemeAppearance(to: window)
         
         super.init(window: window)
+
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleSettingsChanged),
+            name: Notification.Name("SettingsChanged"),
+            object: nil
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
     }
     
     @available(*, unavailable)
@@ -43,6 +55,8 @@ final class SearchWindowController: NSWindowController {
         guard let window = window, let screen = NSScreen.main else {
             return
         }
+
+        Self.applyThemeAppearance(to: window)
         
         centerWindow(window, on: screen)
         resetSearchState()
@@ -84,5 +98,41 @@ final class SearchWindowController: NSWindowController {
     
     private func resetSearchState() {
         NotificationCenter.default.post(name: Notification.Name("ResetSearchWindow"), object: nil)
+    }
+
+    @objc private func handleSettingsChanged() {
+        guard let window else {
+            return
+        }
+
+        Self.applyThemeAppearance(to: window)
+        window.contentView = NSHostingView(rootView: Self.makeSearchRootView())
+    }
+
+    private static func makeSearchRootView() -> some View {
+        SearchWindowView()
+            .preferredColorScheme(resolvedColorScheme())
+    }
+
+    private static func resolvedColorScheme() -> ColorScheme? {
+        switch SettingsService.shared.settings.themeMode {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
+    }
+
+    private static func applyThemeAppearance(to window: NSWindow) {
+        switch SettingsService.shared.settings.themeMode {
+        case "light":
+            window.appearance = NSAppearance(named: .aqua)
+        case "dark":
+            window.appearance = NSAppearance(named: .darkAqua)
+        default:
+            window.appearance = nil
+        }
     }
 }

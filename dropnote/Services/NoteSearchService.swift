@@ -14,39 +14,33 @@ final class NoteSearchService: ObservableObject {
     // MARK: - Public Methods
     
     func indexNotes() {
-        guard FileManager.default.fileExists(atPath: notesPath.path),
-              let data = try? Data(contentsOf: notesPath),
-              let notes = try? JSONDecoder().decode([Note].self, from: data) else {
-            indexedNotes = []
-            return
+        let mapped = loadIndexedNotesFromDisk()
+        DispatchQueue.main.async {
+            self.indexedNotes = mapped
         }
-        
-        indexedNotes = notes.map { note in
-            IndexedNote(
-                id: note.id,
-                title: note.title,
-                text: note.text,
-                lastModified: note.lastModified ?? Date(),
-                titleLowercased: note.title.lowercased(),
-                textLowercased: note.text.lowercased()
-            )
-        }
+    }
+
+    func indexNotes(with notes: [Note]) {
+        let mapped = Self.mapNotes(notes)
+        indexedNotes = mapped
     }
     
     func search(query: String, limit: Int = 10) -> [SearchResult] {
+        let notesSnapshot = loadIndexedNotesFromDisk()
+
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         
         if trimmedQuery.isEmpty {
-            return getRecentNotes(limit: limit)
+            return getRecentNotes(in: notesSnapshot, limit: limit)
         }
         
-        return performSearch(query: trimmedQuery, limit: limit)
+        return performSearch(in: notesSnapshot, query: trimmedQuery, limit: limit)
     }
     
     // MARK: - Private Methods
     
-    private func getRecentNotes(limit: Int) -> [SearchResult] {
-        indexedNotes
+    private func getRecentNotes(in notes: [IndexedNote], limit: Int) -> [SearchResult] {
+        notes
             .sorted { $0.lastModified > $1.lastModified }
             .prefix(limit)
             .map { note in
@@ -61,20 +55,33 @@ final class NoteSearchService: ObservableObject {
             }
     }
     
-    private func performSearch(query: String, limit: Int) -> [SearchResult] {
+    private func performSearch(in notes: [IndexedNote], query: String, limit: Int) -> [SearchResult] {
         let queryLowercased = query.lowercased()
-        var scoredResults: [(note: IndexedNote, score: Double, matchedInTitle: Bool)] = []
-        
-        for note in indexedNotes {
-            let score = calculateSearchScore(note: note, query: queryLowercased)
-            if score > 0 {
-                let matchedInTitle = note.titleLowercased.contains(queryLowercased)
-                scoredResults.append((note, score, matchedInTitle))
+        let scoredResults: [(note: IndexedNote, score: Double, matchedInTitle: Bool)] = notes.compactMap { note in
+            let matchedInTitle = note.titleLowercased.contains(queryLowercased)
+            let matchedInText = note.textLowercased.contains(queryLowercased)
+
+            guard matchedInTitle || matchedInText else {
+                return nil
             }
+
+            return (
+                note: note,
+                score: calculateSearchScore(
+                    note: note,
+                    query: queryLowercased,
+                    matchedInTitle: matchedInTitle,
+                    matchedInText: matchedInText
+                ),
+                matchedInTitle: matchedInTitle
+            )
+        }.sorted { lhs, rhs in
+            if lhs.score != rhs.score {
+                return lhs.score > rhs.score
+            }
+            return lhs.note.lastModified > rhs.note.lastModified
         }
-        
-        scoredResults.sort { $0.score > $1.score }
-        
+
         return scoredResults.prefix(limit).map { result in
             let preview = getPreview(from: result.note.text, query: queryLowercased, maxLength: 100)
             let highlightRanges = findHighlightRanges(in: preview, query: queryLowercased)
@@ -90,37 +97,35 @@ final class NoteSearchService: ObservableObject {
         }
     }
     
-    private func calculateSearchScore(note: IndexedNote, query: String) -> Double {
+    private func calculateSearchScore(
+        note: IndexedNote,
+        query: String,
+        matchedInTitle: Bool,
+        matchedInText: Bool
+    ) -> Double {
         var score: Double = 0
-        
-        // Score title matches
-        if note.titleLowercased.contains(query) {
+
+        if matchedInTitle {
             if note.titleLowercased == query {
-                score += 1000
+                score += 2000
             } else if note.titleLowercased.hasPrefix(query) {
-                score += 500
+                score += 1200
             } else if note.titleLowercased.contains(" " + query) {
-                score += 400
+                score += 900
             } else {
-                score += 300
+                score += 700
             }
         }
-        
-        // Score text matches
-        if note.textLowercased.contains(query) {
+
+        if matchedInText {
             if note.textLowercased.hasPrefix(query) {
-                score += 200
+                score += 250
             } else {
                 let occurrences = note.textLowercased.components(separatedBy: query).count - 1
-                score += Double(occurrences) * 50
+                score += Double(max(1, occurrences)) * 80
             }
         }
-        
-        guard score > 0 else {
-            return 0
-        }
-        
-        // Boost by recency
+
         let daysSinceModified = Date().timeIntervalSince(note.lastModified) / 86400
         let recencyScore = max(0, 100 - daysSinceModified)
         score += recencyScore * 0.5
@@ -178,5 +183,28 @@ final class NoteSearchService: ObservableObject {
         }
         
         return ranges
+    }
+
+    private static func mapNotes(_ notes: [Note]) -> [IndexedNote] {
+        notes.map { note in
+            IndexedNote(
+                id: note.id,
+                title: note.title,
+                text: note.text,
+                lastModified: note.lastModified ?? Date(),
+                titleLowercased: note.title.lowercased(),
+                textLowercased: note.text.lowercased()
+            )
+        }
+    }
+
+    private func loadIndexedNotesFromDisk() -> [IndexedNote] {
+        guard FileManager.default.fileExists(atPath: notesPath.path),
+              let data = try? Data(contentsOf: notesPath),
+              let notes = try? JSONDecoder().decode([Note].self, from: data) else {
+            return indexedNotes
+        }
+
+        return Self.mapNotes(notes)
     }
 }

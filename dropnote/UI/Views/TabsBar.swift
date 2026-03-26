@@ -62,23 +62,35 @@ struct TabsBar: View {
     
     @ViewBuilder
     private func selectableTabButton(index: Int) -> some View {
-        HStack(spacing: 6) {
-            if notes[index].isPinned {
-                Image(systemName: "pin.fill")
-                    .font(.system(size: 10, weight: .semibold))
-                    .foregroundColor(.secondary)
+        Button {
+            selectedTab = index
+        } label: {
+            HStack(spacing: 6) {
+                if notes[index].isPinned {
+                    Image(systemName: "pin.fill")
+                        .font(.system(size: 10, weight: .semibold))
+                        .foregroundColor(.secondary)
+                }
+
+                Text(notes[index].title)
+                    .lineLimit(1)
             }
-            
-            Text(notes[index].title)
-                .lineLimit(1)
+            .frame(minWidth: 72, alignment: .leading)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(selectedTab == index ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
+            .cornerRadius(6)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .fixedSize(horizontal: true, vertical: false)
         }
-        .frame(minWidth: 92, alignment: .leading)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
-        .background(selectedTab == index ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
-        .cornerRadius(6)
-        .contentShape(RoundedRectangle(cornerRadius: 6))
-        .fixedSize(horizontal: true, vertical: false)
+        .buttonStyle(.plain)
+        .simultaneousGesture(
+            TapGesture(count: 2).onEnded {
+                editedTabTitle = notes[index].title
+                isEditingTabTitle = true
+                selectedTab = index
+            }
+        )
         .contextMenu {
             Button(notes[index].isPinned ? "Unpin" : "Pin") {
                 onRequestTogglePin(index)
@@ -94,14 +106,6 @@ struct TabsBar: View {
             Button("Delete Note", role: .destructive) {
                 onRequestDelete(index)
             }
-        }
-        .onTapGesture(count: 2) {
-            editedTabTitle = notes[index].title
-            isEditingTabTitle = true
-            selectedTab = index
-        }
-        .onTapGesture {
-            selectedTab = index
         }
     }
     

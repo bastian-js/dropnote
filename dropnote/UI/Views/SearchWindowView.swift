@@ -8,11 +8,18 @@ struct SearchWindowView: View {
     @State private var searchResults: [SearchResult] = []
     @State private var selectedIndex: Int = 0
     @FocusState private var isSearchFieldFocused: Bool
-    @State private var debounceWorkItem: DispatchWorkItem?
     @State private var windowID = UUID()
     @State private var eventMonitor: Any?
     @State private var clickMonitor: Any?
     @State private var showRecentNotes: Bool = SettingsService.shared.settings.showSearchRecentNotes
+
+    private var hasTypedQuery: Bool {
+        !searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+    }
+
+    private var shouldShowResultsArea: Bool {
+        showRecentNotes || hasTypedQuery
+    }
     
     var body: some View {
         VStack(spacing: 0) {
@@ -21,7 +28,7 @@ struct SearchWindowView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 12)
             
-            if showRecentNotes {
+            if shouldShowResultsArea {
                 if searchResults.isEmpty {
                     emptyState
                 } else {
@@ -47,7 +54,7 @@ struct SearchWindowView: View {
                 isSearchFieldFocused = true
             }
             if showRecentNotes {
-                performSearch()
+                performSearch(for: searchQuery)
             }
         }
         .onDisappear {
@@ -75,23 +82,26 @@ struct SearchWindowView: View {
                 .font(.system(size: 20, weight: .medium))
                 .foregroundColor(.secondary)
             
-            TextField("search notes...", text: $searchQuery)
+            TextField("search notes...", text: Binding(
+                get: { searchQuery },
+                set: { newValue in
+                    searchQuery = newValue
+                    performSearch(for: newValue)
+                }
+            ))
                 .textFieldStyle(.plain)
                 .font(.system(size: 20))
                 .focused($isSearchFieldFocused)
-                .onChange(of: searchQuery) { oldValue, newValue in
-                    scheduleSearch()
-                }
         }
         .padding(.vertical, 12)
         .padding(.horizontal, 16)
         .background(
             RoundedRectangle(cornerRadius: 12)
-                .fill(Color(nsColor: .controlBackgroundColor))
+                .fill(ColorSchemeHelper.searchFieldBackground())
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(ColorSchemeHelper.borderColor(), lineWidth: 1)
+                .stroke(ColorSchemeHelper.searchFieldBorder(), lineWidth: 1)
         )
     }
     
@@ -129,6 +139,7 @@ struct SearchWindowView: View {
                         SearchResultRow(
                             result: result,
                             index: index,
+                            searchQuery: searchQuery,
                             isSelected: selectedIndex == index,
                             onTap: {
                                 selectedIndex = index
@@ -210,7 +221,7 @@ struct SearchWindowView: View {
             } else {
                 searchQuery = ""
                 selectedIndex = 0
-                performSearch()
+                performSearch(for: "")
             }
             return nil
             
@@ -219,21 +230,8 @@ struct SearchWindowView: View {
         }
     }
     
-    private func scheduleSearch() {
-        debounceWorkItem?.cancel()
-        
-        let workItem = DispatchWorkItem {
-            DispatchQueue.main.async {
-                self.performSearch()
-            }
-        }
-        
-        debounceWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15, execute: workItem)
-    }
-    
-    private func performSearch() {
-        searchResults = searchService.search(query: searchQuery, limit: 10)
+    private func performSearch(for query: String) {
+        searchResults = searchService.search(query: query, limit: 10)
         selectedIndex = 0
     }
     
@@ -244,7 +242,7 @@ struct SearchWindowView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             isSearchFieldFocused = true
         }
-        performSearch()
+        performSearch(for: "")
     }
     
     private func openSelectedNote() {

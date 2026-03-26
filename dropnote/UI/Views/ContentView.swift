@@ -32,6 +32,7 @@ struct ContentView: View {
     @State private var unlockedNoteIDs: Set<UUID> = []
     @State private var themeMode: String = "system"
     @State private var showSearchRecentNotes: Bool = true
+    @State private var cachedFilteredIndices: [Int] = []
     
     @Environment(\.undoManager) private var undoManager
     
@@ -54,6 +55,7 @@ struct ContentView: View {
             .preferredColorScheme(getColorScheme())
             .onAppear {
                 loadNotesIfNeeded()
+                recomputeFilteredIndices()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
                 if let appDelegate = AppDelegate.shared, appDelegate.popover?.isShown == true {
@@ -79,17 +81,26 @@ struct ContentView: View {
                 themeMode = SettingsService.shared.settings.themeMode
                 showSearchRecentNotes = SettingsService.shared.settings.showSearchRecentNotes
             }
+            .onChange(of: notes) { _, _ in
+                recomputeFilteredIndices()
+            }
+            .onChange(of: searchText) { _, _ in
+                recomputeFilteredIndices()
+            }
     }
     
     // MARK: - Main View Components
     
     @ViewBuilder
     private var mainContent: some View {
+        let currentFilteredIndices = cachedFilteredIndices
+        let currentActiveIndex = activeIndex(from: currentFilteredIndices)
+
         VStack(spacing: 6) {
             searchBar
             TabsBar(
                 notes: $notes,
-                filteredIndices: filteredIndices,
+                filteredIndices: currentFilteredIndices,
                 selectedTab: $selectedTab,
                 isEditingTabTitle: $isEditingTabTitle,
                 editedTabTitle: $editedTabTitle,
@@ -108,10 +119,10 @@ struct ContentView: View {
                 }
             )
             
-            noteArea
+            noteArea(filteredIndices: currentFilteredIndices, activeIndex: currentActiveIndex)
                 .frame(maxHeight: .infinity)
             
-            if let current = activeIndex, showEditorToolbar {
+            if let current = currentActiveIndex, showEditorToolbar {
                 EditorToolbar(
                     noteIndex: current,
                     notes: $notes,
@@ -162,7 +173,17 @@ struct ContentView: View {
             if isSearching {
                 HStack(spacing: 6) {
                     TextField("Search", text: $searchText)
-                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .textFieldStyle(.plain)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(ColorSchemeHelper.searchFieldBackground())
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 8)
+                                .stroke(ColorSchemeHelper.searchFieldBorder(), lineWidth: 1)
+                        )
                         .frame(maxWidth: .infinity)
                         .transition(.opacity)
                         .focused($isSearchFieldFocused)
@@ -209,7 +230,7 @@ struct ContentView: View {
     }
     
     @ViewBuilder
-    private var noteArea: some View {
+    private func noteArea(filteredIndices: [Int], activeIndex: Int?) -> some View {
         Group {
             if filteredIndices.isEmpty {
                 emptyState
@@ -280,7 +301,7 @@ struct ContentView: View {
     
     // MARK: - Computed Properties
     
-    private var filteredIndices: [Int] {
+    private func computeFilteredIndices() -> [Int] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let baseIndices: [Int]
         
@@ -303,12 +324,16 @@ struct ContentView: View {
             return noteA.title.localizedCaseInsensitiveCompare(noteB.title) == .orderedAscending
         }
     }
+
+    private func recomputeFilteredIndices() {
+        cachedFilteredIndices = computeFilteredIndices()
+    }
     
-    private var activeIndex: Int? {
-        if filteredIndices.contains(selectedTab) {
+    private func activeIndex(from indices: [Int]) -> Int? {
+        if indices.contains(selectedTab) {
             return selectedTab
         }
-        return filteredIndices.first
+        return indices.first
     }
     
     // MARK: - Private Methods
@@ -412,22 +437,29 @@ struct ContentView: View {
     }
     
     private func scheduleSave() {
-        if let current = activeIndex {
+        let currentFilteredIndices = cachedFilteredIndices
+        if let current = activeIndex(from: currentFilteredIndices) {
             notes[current].updateModifiedDate()
         }
+
+        let notesSnapshot = notes
         
         pendingSaveWorkItem?.cancel()
         isSaving = true
         
         let work = DispatchWorkItem {
-            DispatchQueue.main.async {
-                self.saveNotes()
-                self.lastSavedAt = Date()
-                NoteSearchService.shared.indexNotes()
-                
-                self.savingStatusTimer?.invalidate()
-                self.savingStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-                    self.isSaving = false
+            DispatchQueue.global(qos: .utility).async {
+                self.notesService.saveNotes(notesSnapshot)
+                DispatchQueue.main.async {
+                    NoteSearchService.shared.indexNotes(with: notesSnapshot)
+                }
+
+                DispatchQueue.main.async {
+                    self.lastSavedAt = Date()
+                    self.savingStatusTimer?.invalidate()
+                    self.savingStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
+                        self.isSaving = false
+                    }
                 }
             }
         }
@@ -437,7 +469,10 @@ struct ContentView: View {
     }
     
     private func saveNotes() {
-        notesService.saveNotes(notes)
+        let snapshot = notes
+        DispatchQueue.global(qos: .utility).async {
+            self.notesService.saveNotes(snapshot)
+        }
     }
     
     private func addNote() {
@@ -450,13 +485,14 @@ struct ContentView: View {
             selectedTab = notes.count - 1
         }
         saveNotes()
-        NoteSearchService.shared.indexNotes()
+        NoteSearchService.shared.indexNotes(with: notes)
     }
     
     private func deleteNote(at index: Int) {
         notes.remove(at: index)
         selectedTab = max(0, min(selectedTab, notes.count - 1))
         saveNotes()
+        NoteSearchService.shared.indexNotes(with: notes)
     }
     
     private func unlockNoteFlow(noteIndex: Int) {

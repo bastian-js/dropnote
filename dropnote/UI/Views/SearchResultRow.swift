@@ -3,8 +3,17 @@ import SwiftUI
 struct SearchResultRow: View {
     let result: SearchResult
     let index: Int
+    let searchQuery: String
     let isSelected: Bool
     var onTap: () -> Void = {}
+
+    private var showsTitleMatchBadge: Bool {
+        let trimmedQuery = searchQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard !trimmedQuery.isEmpty else {
+            return false
+        }
+        return result.note.title.lowercased().contains(trimmedQuery)
+    }
     
     var body: some View {
         HStack(alignment: .top, spacing: 12) {
@@ -66,7 +75,7 @@ struct SearchResultRow: View {
                 .font(.system(size: 11))
                 .foregroundColor(.secondary)
             
-            if result.matchedInTitle {
+            if showsTitleMatchBadge {
                 Text("title match")
                     .font(.system(size: 10, weight: .medium))
                     .foregroundColor(.accentColor)
