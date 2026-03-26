@@ -44,7 +44,7 @@ struct TabsBar: View {
         .focused($isTextFieldFocused)
         .textFieldStyle(PlainTextFieldStyle())
         .padding(6)
-        .background(Color.gray.opacity(0.2))
+        .background(ColorSchemeHelper.inputBackground())
         .cornerRadius(6)
         .fixedSize(horizontal: true, vertical: false)
         .onChange(of: isTextFieldFocused) { _, focused in
@@ -72,9 +72,12 @@ struct TabsBar: View {
             Text(notes[index].title)
                 .lineLimit(1)
         }
-        .padding(6)
-        .background(selectedTab == index ? Color.accentColor.opacity(0.22) : Color.clear)
+        .frame(minWidth: 92, alignment: .leading)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 8)
+        .background(selectedTab == index ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
         .cornerRadius(6)
+        .contentShape(RoundedRectangle(cornerRadius: 6))
         .fixedSize(horizontal: true, vertical: false)
         .contextMenu {
             Button(notes[index].isPinned ? "Unpin" : "Pin") {
@@ -95,14 +98,10 @@ struct TabsBar: View {
         .onTapGesture(count: 2) {
             editedTabTitle = notes[index].title
             isEditingTabTitle = true
-            withAnimation(.easeInOut(duration: 0.15)) {
-                selectedTab = index
-            }
+            selectedTab = index
         }
         .onTapGesture {
-            withAnimation(.easeInOut(duration: 0.15)) {
-                selectedTab = index
-            }
+            selectedTab = index
         }
     }
     

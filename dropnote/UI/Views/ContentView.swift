@@ -30,6 +30,8 @@ struct ContentView: View {
     @State private var savingStatusTimer: Timer?
     
     @State private var unlockedNoteIDs: Set<UUID> = []
+    @State private var themeMode: String = "system"
+    @State private var showSearchRecentNotes: Bool = true
     
     @Environment(\.undoManager) private var undoManager
     
@@ -41,12 +43,15 @@ struct ContentView: View {
     init() {
         let settings = SettingsService.shared.settings
         _showWordCounter = State(initialValue: settings.showWordCounter)
-        _notes = State(initialValue: [Note(title: "Loading...", text: "")])
+        _themeMode = State(initialValue: settings.themeMode)
+        _showSearchRecentNotes = State(initialValue: settings.showSearchRecentNotes)
+        _notes = State(initialValue: [])
         _isLoadingNotes = State(initialValue: true)
     }
     
     var body: some View {
         mainContent
+            .preferredColorScheme(getColorScheme())
             .onAppear {
                 loadNotesIfNeeded()
             }
@@ -71,6 +76,8 @@ struct ContentView: View {
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsChanged"))) { _ in
                 showWordCounter = SettingsService.shared.settings.showWordCounter
+                themeMode = SettingsService.shared.settings.themeMode
+                showSearchRecentNotes = SettingsService.shared.settings.showSearchRecentNotes
             }
     }
     
@@ -112,6 +119,9 @@ struct ContentView: View {
                         deleteIndex = index
                         showDeleteAlert = true
                     },
+                    onRequestAddNote: {
+                        addNote()
+                    },
                     onRequestTogglePin: { index in
                         notes[index].isPinned.toggle()
                         scheduleSave()
@@ -150,23 +160,38 @@ struct ContentView: View {
             }
             
             if isSearching {
-                TextField("Search", text: $searchText)
-                    .textFieldStyle(RoundedBorderTextFieldStyle())
-                    .frame(maxWidth: .infinity)
-                    .transition(.opacity)
-                    .focused($isSearchFieldFocused)
-                    .onChange(of: isSearchFieldFocused) { _, focused in
-                        if !focused {
-                            withAnimation {
-                                isSearching = false
+                HStack(spacing: 6) {
+                    TextField("Search", text: $searchText)
+                        .textFieldStyle(RoundedBorderTextFieldStyle())
+                        .frame(maxWidth: .infinity)
+                        .transition(.opacity)
+                        .focused($isSearchFieldFocused)
+                        .onChange(of: isSearchFieldFocused) { _, focused in
+                            if !focused {
+                                withAnimation {
+                                    isSearching = false
+                                    searchText = ""
+                                }
                             }
                         }
-                    }
-                    .onAppear {
-                        DispatchQueue.main.async {
-                            self.isSearchFieldFocused = true
+                        .onAppear {
+                            DispatchQueue.main.async {
+                                self.isSearchFieldFocused = true
+                            }
                         }
+                    
+                    Button {
+                        withAnimation {
+                            isSearching = false
+                            searchText = ""
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundColor(.secondary)
                     }
+                    .buttonStyle(PlainButtonStyle())
+                }
             } else {
                 Spacer()
                 Button {
@@ -199,11 +224,7 @@ struct ContentView: View {
                     onToggleLock: toggleLock
                 )
                 .padding(.horizontal, 12)
-                .transition(.asymmetric(
-                    insertion: .opacity.combined(with: .move(edge: .trailing)),
-                    removal: .opacity.combined(with: .move(edge: .leading))
-                ))
-                .id(notes[current].id)
+                .transition(.opacity)
             }
         }
     }
@@ -213,29 +234,42 @@ struct ContentView: View {
         VStack(spacing: 12) {
             Spacer(minLength: 0)
             
-            Image(systemName: "note.text")
-                .font(.system(size: 34, weight: .semibold))
-                .foregroundColor(.secondary)
-                .padding(.bottom, 4)
-            
-            Text("No notes yet")
-                .font(.title3.weight(.semibold))
-            
-            Text("Create your first note to get started.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-                .multilineTextAlignment(.center)
-                .padding(.horizontal, 24)
-            
-            Button {
-                addNote()
-            } label: {
-                Label("Create Note", systemImage: "plus")
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 8)
+            if isLoadingNotes {
+                ProgressView()
+                    .scaleEffect(1.2)
+                    .padding(.bottom, 4)
+                
+                Text("Loading notes...")
+                    .font(.title3.weight(.semibold))
+                
+                Text("Please wait while your notes are being loaded.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+            } else {
+                Image(systemName: "note.text")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 4)
+                
+                Text("No notes yet")
+                    .font(.title3.weight(.semibold))
+                
+                Text("Create your first note to get started.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
+                
+                Button {
+                    addNote()
+                } label: {
+                    Label("Create Note", systemImage: "plus")
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 8)
+                }
+                .buttonStyle(.borderedProminent)
+                .transition(.scale.combined(with: .opacity))
             }
-            .buttonStyle(.borderedProminent)
-            .transition(.scale.combined(with: .opacity))
             
             Spacer(minLength: 0)
         }
@@ -284,6 +318,7 @@ struct ContentView: View {
         if isSearching {
             withAnimation {
                 isSearching = false
+                searchText = ""
             }
             isSearchFieldFocused = false
         }
@@ -467,24 +502,47 @@ struct ContentView: View {
     
     private func openSettings(_ sender: Any?) {
         DispatchQueue.main.async {
-            let settingsWindow = NSWindow(
-                contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
-                styleMask: [.titled, .closable, .resizable],
-                backing: .buffered,
-                defer: false
-            )
-            settingsWindow.center()
-            settingsWindow.isReleasedWhenClosed = false
-            settingsWindow.title = "Settings"
-            settingsWindow.contentView = NSHostingView(rootView: SettingsView())
-            settingsWindow.makeKeyAndOrderFront(nil)
-            NSApp.activate(ignoringOtherApps: true)
+            if let appDelegate = AppDelegate.shared,
+               let popover = appDelegate.popover,
+               popover.isShown {
+                popover.performClose(nil)
+                popover.close()
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                let settingsWindow = NSWindow(
+                    contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
+                    styleMask: [.titled, .closable, .resizable],
+                    backing: .buffered,
+                    defer: false
+                )
+                settingsWindow.center()
+                settingsWindow.isReleasedWhenClosed = false
+                settingsWindow.title = "Settings"
+
+                let settingsView = SettingsView()
+
+                settingsWindow.contentView = NSHostingView(rootView: settingsView)
+                settingsWindow.makeKeyAndOrderFront(nil)
+                NSApp.activate(ignoringOtherApps: true)
+            }
         }
     }
     
     private func quitApp(_ sender: Any?) {
         DispatchQueue.main.async {
             NSApplication.shared.terminate(nil)
+        }
+    }
+    
+    private func getColorScheme() -> ColorScheme? {
+        switch themeMode {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default: // system
+            return nil
         }
     }
 }

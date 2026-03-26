@@ -19,4 +19,6 @@ struct AppSettings: Codable {
     var showWordCounter: Bool = true
     var searchHotKey: HotKeySettings = .default
     var hasCompletedOnboarding: Bool = false
+    var themeMode: String = "system" // "system", "light", "dark"
+    var showSearchRecentNotes: Bool = true // true = show input + recent notes, false = show only input
 }

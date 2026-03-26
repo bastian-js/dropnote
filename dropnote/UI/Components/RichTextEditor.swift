@@ -12,12 +12,17 @@ struct RichTextEditor: NSViewRepresentable {
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: RichTextEditor
         var lastLoadedRTF: Data?
+        var isProgrammaticUpdate = false
         
         init(_ parent: RichTextEditor) {
             self.parent = parent
         }
         
         func textDidChange(_ notification: Notification) {
+            if isProgrammaticUpdate {
+                return
+            }
+
             if let textView = notification.object as? NSTextView {
                 parent.text = textView.string
                 
@@ -105,48 +110,68 @@ struct RichTextEditor: NSViewRepresentable {
         guard let rtfData = attributedTextRTF else {
             return
         }
+
+        let selectedRanges = textView.selectedRanges
         
         if let cachedString = Self.rtfCache.object(forKey: rtfData as NSData) {
+            context.coordinator.isProgrammaticUpdate = true
             textView.textStorage?.setAttributedString(cachedString)
+            context.coordinator.isProgrammaticUpdate = false
         } else if let attributedString = try? NSAttributedString(
             data: rtfData,
             options: [.documentType: NSAttributedString.DocumentType.rtf],
             documentAttributes: nil
         ) {
+            context.coordinator.isProgrammaticUpdate = true
             textView.textStorage?.setAttributedString(attributedString)
+            context.coordinator.isProgrammaticUpdate = false
             Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData)
         }
+        textView.selectedRanges = selectedRanges
         context.coordinator.lastLoadedRTF = rtfData
     }
     
     private func updateTextViewContent(_ textView: NSTextView, context: Context) {
         let currentText = text
-        
+
+        // Update visible text immediately so note switching feels instant.
+        if textView.string != currentText {
+            context.coordinator.isProgrammaticUpdate = true
+            textView.string = currentText
+            context.coordinator.isProgrammaticUpdate = false
+        }
+
+        guard let rtfData = attributedTextRTF else {
+            return
+        }
+
+        let selectedRanges = textView.selectedRanges
+
+        if let cachedString = Self.rtfCache.object(forKey: rtfData as NSData) {
+            context.coordinator.isProgrammaticUpdate = true
+            textView.textStorage?.setAttributedString(cachedString)
+            context.coordinator.isProgrammaticUpdate = false
+            textView.selectedRanges = selectedRanges
+            return
+        }
+
         DispatchQueue.global(qos: .userInitiated).async {
-            if let rtfData = attributedTextRTF {
-                if let cachedString = Self.rtfCache.object(forKey: rtfData as NSData) {
-                    DispatchQueue.main.async {
-                        if context.coordinator.lastLoadedRTF == rtfData {
-                            textView.textStorage?.setAttributedString(cachedString)
-                        }
-                    }
-                } else if let attributedString = try? NSAttributedString(
-                    data: rtfData,
-                    options: [.documentType: NSAttributedString.DocumentType.rtf],
-                    documentAttributes: nil
-                ) {
-                    Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData)
-                    DispatchQueue.main.async {
-                        if context.coordinator.lastLoadedRTF == rtfData {
-                            textView.textStorage?.setAttributedString(attributedString)
-                        }
-                    }
-                }
-            } else {
-                DispatchQueue.main.async {
-                    if textView.string != currentText {
-                        textView.string = currentText
-                    }
+            guard let attributedString = try? NSAttributedString(
+                data: rtfData,
+                options: [.documentType: NSAttributedString.DocumentType.rtf],
+                documentAttributes: nil
+            ) else {
+                return
+            }
+
+            Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData)
+
+            DispatchQueue.main.async {
+                if context.coordinator.lastLoadedRTF == rtfData {
+                    context.coordinator.isProgrammaticUpdate = true
+                    textView.textStorage?.setAttributedString(attributedString)
+                    context.coordinator.isProgrammaticUpdate = false
+                    textView.selectedRanges = selectedRanges
                 }
             }
         }

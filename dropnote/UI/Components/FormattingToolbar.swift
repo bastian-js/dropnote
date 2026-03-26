@@ -68,7 +68,7 @@ struct FormattingToolbar: View {
                 .font(.system(size: 12, weight: .semibold))
                 .frame(width: 24, height: 24)
                 .foregroundColor(.primary)
-                .background(isActive ? Color.accentColor.opacity(0.3) : Color.gray.opacity(0.1))
+                .background(isActive ? Color.accentColor.opacity(0.3) : ColorSchemeHelper.inputBackground())
                 .cornerRadius(4)
         }
         .buttonStyle(PlainButtonStyle())

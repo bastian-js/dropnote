@@ -1,10 +1,12 @@
 import SwiftUI
 import AppKit
+import PDFKit
 
 struct EditorToolbar: View {
     let noteIndex: Int
     @Binding var notes: [Note]
     var onRequestDelete: (Int) -> Void
+    var onRequestAddNote: () -> Void
     var onRequestTogglePin: (Int) -> Void
     var onRequestToggleLock: (Int) -> Void
     var onSave: () -> Void
@@ -33,7 +35,7 @@ struct EditorToolbar: View {
         .clipShape(RoundedRectangle(cornerRadius: 12))
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.25), lineWidth: 1)
+                .stroke(ColorSchemeHelper.borderColor(), lineWidth: 1)
         )
     }
     
@@ -43,7 +45,7 @@ struct EditorToolbar: View {
             icon: "plus",
             tooltip: "New Note",
             action: {
-                onRequestTogglePin(noteIndex)
+                onRequestAddNote()
             }
         )
     }
@@ -143,6 +145,8 @@ struct EditorToolbar: View {
         panel.allowedContentTypes = [.plainText]
         panel.canCreateDirectories = true
         
+        NSApp.activate(ignoringOtherApps: true)
+        
         panel.begin { response in
             guard response == .OK, let url = panel.url else {
                 return
@@ -161,17 +165,54 @@ struct EditorToolbar: View {
         panel.allowedContentTypes = [.pdf]
         panel.canCreateDirectories = true
         
+        NSApp.activate(ignoringOtherApps: true)
+        
         panel.begin { response in
             guard response == .OK, let url = panel.url else {
                 return
             }
             
-            let pdfData = FileExportHelper.createPDFData(
-                title: note.title,
-                body: note.text,
-                attributedTextRTF: note.attributedTextRTF
-            )
-            try? pdfData.write(to: url, options: .atomic)
+            let pdfDocument = PDFDocument()
+            let pageSize = CGSize(width: 612, height: 792)
+            let page = PDFPage()
+            page.setBounds(CGRect(origin: .zero, size: pageSize), for: .mediaBox)
+            
+            pdfDocument.insert(page, at: 0)
+            
+            // Render text to PDF
+            let textColor: NSColor = NSAppearance.current.name == .darkAqua ? .white : .black
+            let attributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 12),
+                .foregroundColor: textColor
+            ]
+            
+            let titleText = "\(note.title)\n\n"
+            let titleColor: NSColor = NSAppearance.current.name == .darkAqua ? .white : .black
+            let titleAttributes: [NSAttributedString.Key: Any] = [
+                .font: NSFont.systemFont(ofSize: 14, weight: .semibold),
+                .foregroundColor: titleColor
+            ]
+            
+            var y: CGFloat = 36
+            let x: CGFloat = 36
+            let pageWidth = pageSize.width - 72
+            
+            // Draw title
+            let titleString = NSAttributedString(string: titleText, attributes: titleAttributes)
+            let titleSize = titleString.size()
+            let titleRect = CGRect(x: x, y: pageSize.height - y - titleSize.height, width: pageWidth, height: titleSize.height)
+            titleString.draw(in: titleRect)
+            y += titleSize.height + 12
+            
+            // Draw body text
+            let textString = NSAttributedString(string: note.text, attributes: attributes)
+            let textSize = textString.size()
+            let textRect = CGRect(x: x, y: pageSize.height - y - textSize.height, width: pageWidth, height: textSize.height)
+            textString.draw(in: textRect)
+            
+            if let pdfData = pdfDocument.dataRepresentation() {
+                try? pdfData.write(to: url, options: .atomic)
+            }
         }
     }
 }

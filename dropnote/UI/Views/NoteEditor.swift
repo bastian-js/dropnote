@@ -65,29 +65,70 @@ struct NoteEditor: View {
         }
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.28), lineWidth: 1)
+                .stroke(ColorSchemeHelper.borderColor(), lineWidth: 1)
         )
         .frame(maxHeight: .infinity)
     }
     
     @ViewBuilder
     private var lockedView: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "lock.fill")
-                .font(.system(size: 22))
-                .foregroundColor(.secondary)
-            Text("Locked")
-                .font(.headline)
-            Text("Unlock to view and edit this note.")
-                .font(.subheadline)
-                .foregroundColor(.secondary)
-            Button("Unlock") {
-                onUnlock(noteIndex)
+        VStack(spacing: 20) {
+            Spacer()
+            
+            // Lock Icon with background
+            VStack {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 48, weight: .semibold))
+                    .foregroundColor(.white)
             }
+            .frame(width: 80, height: 80)
+            .background(
+                Circle()
+                    .fill(Color.accentColor.opacity(0.8))
+                    .shadow(color: Color.accentColor.opacity(0.3), radius: 12, x: 0, y: 6)
+            )
+            
+            // Locked Text
+            VStack(spacing: 8) {
+                Text("This note is locked")
+                    .font(.system(size: 18, weight: .semibold))
+                
+                Text("Enter your password or use biometrics to unlock and view this note.")
+                    .font(.system(size: 13, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(4)
+            }
+            .padding(.horizontal, 24)
+            
+            Spacer()
+            
+            // Unlock Button
+            Button {
+                onUnlock(noteIndex)
+            } label: {
+                HStack(spacing: 8) {
+                    Image(systemName: "lock.open.fill")
+                        .font(.system(size: 14, weight: .semibold))
+                    Text("Unlock Note")
+                        .font(.system(size: 14, weight: .semibold))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 12)
+                .background(
+                    RoundedRectangle(cornerRadius: 10)
+                        .fill(Color.accentColor)
+                )
+                .foregroundColor(.white)
+            }
+            .buttonStyle(PlainButtonStyle())
             .keyboardShortcut(.defaultAction)
+            .padding(.horizontal, 20)
+            
+            Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(16)
+        .padding(24)
     }
     
     // MARK: - Computed Properties
@@ -99,27 +140,36 @@ struct NoteEditor: View {
     // MARK: - Private Methods
     
     private func applyBoldFormatting() {
-        guard let textView = NSTextView.findInWindow(NSApplication.shared.keyWindow ?? NSWindow()) else {
-            return
+        applyFormatting { textView in
+            TextFormattingHelper.toggleFontTrait(.bold, in: textView)
         }
-        TextFormattingHelper.toggleFontTrait(.bold, in: textView)
-        updateNoteFromTextView(textView)
     }
     
     private func applyItalicFormatting() {
-        guard let textView = NSTextView.findInWindow(NSApplication.shared.keyWindow ?? NSWindow()) else {
-            return
+        applyFormatting { textView in
+            TextFormattingHelper.toggleFontTrait(.italic, in: textView)
         }
-        TextFormattingHelper.toggleFontTrait(.italic, in: textView)
-        updateNoteFromTextView(textView)
     }
     
     private func applyUnderlineFormatting() {
+        applyFormatting { textView in
+            TextFormattingHelper.toggleUnderline(in: textView)
+        }
+    }
+
+    private func applyFormatting(_ action: (NSTextView) -> Void) {
         guard let textView = NSTextView.findInWindow(NSApplication.shared.keyWindow ?? NSWindow()) else {
             return
         }
-        TextFormattingHelper.toggleUnderline(in: textView)
+
+        let selectedRanges = textView.selectedRanges
+        action(textView)
         updateNoteFromTextView(textView)
+
+        DispatchQueue.main.async {
+            textView.selectedRanges = selectedRanges
+            textView.window?.makeFirstResponder(textView)
+        }
     }
     
     private func updateNoteFromTextView(_ textView: NSTextView) {

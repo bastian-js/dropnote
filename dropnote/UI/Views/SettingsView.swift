@@ -3,19 +3,36 @@ import AppKit
 import Carbon
 
 struct SettingsView: View {
+    @Environment(\.colorScheme) var colorScheme
     @State private var showInDock = SettingsService.shared.settings.showInDock
     @State private var startOnBoot = SettingsService.shared.settings.startOnBoot
     @State private var showWordCounter = SettingsService.shared.settings.showWordCounter
     @State private var searchHotKey = SettingsService.shared.settings.searchHotKey
+    @State private var themeMode = SettingsService.shared.settings.themeMode
+    @State private var showSearchRecentNotes = SettingsService.shared.settings.showSearchRecentNotes
     @State private var searchHotKeyError: String? = nil
     @State private var isRecordingHotKey = false
     @State private var hotKeyMonitor: Any?
     @State private var selectedSection: String? = "General"
+
+    private var effectiveColorScheme: ColorScheme {
+        switch themeMode {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return colorScheme
+        }
+    }
     
     var body: some View {
         ZStack {
+            // Adaptive gradient background
             LinearGradient(
-                colors: [Color.black.opacity(0.18), Color.gray.opacity(0.08)],
+                colors: effectiveColorScheme == .dark
+                    ? [Color.black.opacity(0.18), Color.gray.opacity(0.08)]
+                    : [Color.white, Color.gray.opacity(0.03)],
                 startPoint: .topLeading,
                 endPoint: .bottomTrailing
             )
@@ -42,7 +59,10 @@ struct SettingsView: View {
                 .frame(width: 164)
                 .background(
                     RoundedRectangle(cornerRadius: 16)
-                        .fill(Color.black.opacity(0.18))
+                        .fill(effectiveColorScheme == .dark
+                            ? Color.black.opacity(0.18)
+                            : Color.gray.opacity(0.12)
+                        )
                 )
                 .padding(.leading, 8)
                 .padding(.vertical, 12)
@@ -50,6 +70,7 @@ struct SettingsView: View {
                 Divider()
                     .padding(.vertical, 18)
                     .padding(.horizontal, 10)
+                    .opacity(effectiveColorScheme == .dark ? 1 : 0.5)
                 
                 ScrollView {
                     VStack(alignment: .leading, spacing: 16) {
@@ -69,6 +90,7 @@ struct SettingsView: View {
             .padding(.trailing, 16)
         }
         .frame(width: 560, height: 380)
+        .preferredColorScheme(resolvedThemeColorScheme())
         .onAppear {
             reloadSettingsFromService()
         }
@@ -127,7 +149,7 @@ struct SettingsView: View {
                         .padding(.vertical, 6)
                         .background(
                             Capsule()
-                                .fill(Color.black.opacity(0.2))
+                                .fill(effectiveColorScheme == .dark ? Color.black.opacity(0.2) : Color.gray.opacity(0.12))
                         )
                     Button(action: {
                         if isRecordingHotKey {
@@ -142,7 +164,7 @@ struct SettingsView: View {
                             .padding(.vertical, 6)
                             .background(
                                 RoundedRectangle(cornerRadius: 8)
-                                    .fill(Color.white.opacity(0.08))
+                                    .fill(effectiveColorScheme == .dark ? Color.white.opacity(0.08) : Color.gray.opacity(0.12))
                             )
                     }
                     .buttonStyle(.plain)
@@ -168,6 +190,29 @@ struct SettingsView: View {
             Text("Display")
                 .font(.system(.title2, design: .rounded).weight(.semibold))
             
+            settingCard(title: "Appearance") {
+                VStack(alignment: .leading, spacing: 12) {
+                    Text("Theme")
+                        .font(.callout.weight(.semibold))
+                    
+                    HStack(spacing: 8) {
+                        themeModeButton("System", value: "system")
+                        themeModeButton("Light", value: "light")
+                        themeModeButton("Dark", value: "dark")
+                    }
+                }
+            }
+            
+            settingCard(title: "Search") {
+                toggleRow(
+                    title: "Show recent notes",
+                    subtitle: "Display recent notes in global search window",
+                    isOn: $showSearchRecentNotes
+                ) { newValue in
+                    updateSetting(showSearchRecentNotes: newValue)
+                }
+            }
+            
             settingCard(title: "Editor") {
                 toggleRow(
                     title: "Word counter",
@@ -183,6 +228,25 @@ struct SettingsView: View {
     }
     
     @ViewBuilder
+    private func themeModeButton(_ label: String, value: String) -> some View {
+        Button {
+            themeMode = value
+            updateSetting(themeMode: value)
+        } label: {
+            Text(label)
+                .font(.system(size: 13, weight: .semibold))
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: 8)
+                        .fill(themeMode == value ? Color.accentColor : Color.gray.opacity(0.15))
+                )
+                .foregroundColor(themeMode == value ? .white : .primary)
+        }
+        .buttonStyle(PlainButtonStyle())
+    }
+    
+    @ViewBuilder
     private var infoSection: some View {
         VStack(alignment: .leading, spacing: 16) {
             Text("About")
@@ -192,7 +256,7 @@ struct SettingsView: View {
                 VStack(alignment: .leading, spacing: 18) {
                     HStack(spacing: 16) {
                         RoundedRectangle(cornerRadius: 16)
-                            .fill(Color.black.opacity(0.22))
+                            .fill(effectiveColorScheme == .dark ? Color.black.opacity(0.22) : Color.gray.opacity(0.15))
                             .frame(width: 64, height: 64)
                             .overlay(
                                 Image(systemName: "note.text")
@@ -244,7 +308,7 @@ struct SettingsView: View {
             .padding(.horizontal, 6)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? Color.white.opacity(0.18) : Color.clear)
+                    .fill(isSelected ? (effectiveColorScheme == .dark ? Color.white.opacity(0.18) : Color.gray.opacity(0.15)) : Color.clear)
             )
             .contentShape(Rectangle())
         }
@@ -262,10 +326,10 @@ struct SettingsView: View {
         .padding(14)
         .background(
             RoundedRectangle(cornerRadius: 14)
-                .fill(Color.black.opacity(0.15))
+                .fill(effectiveColorScheme == .dark ? Color.black.opacity(0.15) : Color.gray.opacity(0.12))
                 .overlay(
                     RoundedRectangle(cornerRadius: 14)
-                        .stroke(Color.white.opacity(0.06), lineWidth: 1)
+                        .stroke(effectiveColorScheme == .dark ? Color.white.opacity(0.06) : Color.gray.opacity(0.25), lineWidth: 1)
                 )
         )
     }
@@ -302,6 +366,8 @@ struct SettingsView: View {
         startOnBoot = SettingsService.shared.settings.startOnBoot
         showWordCounter = SettingsService.shared.settings.showWordCounter
         searchHotKey = SettingsService.shared.settings.searchHotKey
+        themeMode = SettingsService.shared.settings.themeMode
+        showSearchRecentNotes = SettingsService.shared.settings.showSearchRecentNotes
         NSApplication.shared.setActivationPolicy(.regular)
     }
     
@@ -309,13 +375,18 @@ struct SettingsView: View {
         showInDock: Bool? = nil,
         startOnBoot: Bool? = nil,
         showWordCounter: Bool? = nil,
-        searchHotKey: HotKeySettings? = nil
+        searchHotKey: HotKeySettings? = nil,
+        themeMode: String? = nil,
+        showSearchRecentNotes: Bool? = nil
     ) {
         let updated = AppSettings(
             showInDock: showInDock ?? self.showInDock,
             startOnBoot: startOnBoot ?? self.startOnBoot,
             showWordCounter: showWordCounter ?? self.showWordCounter,
-            searchHotKey: searchHotKey ?? self.searchHotKey
+            searchHotKey: searchHotKey ?? self.searchHotKey,
+            hasCompletedOnboarding: SettingsService.shared.settings.hasCompletedOnboarding,
+            themeMode: themeMode ?? self.themeMode,
+            showSearchRecentNotes: showSearchRecentNotes ?? self.showSearchRecentNotes
         )
         SettingsService.shared.updateSetting(updated)
         NotificationCenter.default.post(name: Notification.Name("SettingsChanged"), object: nil)
@@ -395,5 +466,16 @@ struct SettingsView: View {
         }
         parts.append(hotKey.keyLabel.isEmpty ? "Key \(hotKey.keyCode)" : hotKey.keyLabel)
         return parts.joined(separator: "+")
+    }
+
+    private func resolvedThemeColorScheme() -> ColorScheme? {
+        switch themeMode {
+        case "light":
+            return .light
+        case "dark":
+            return .dark
+        default:
+            return nil
+        }
     }
 }

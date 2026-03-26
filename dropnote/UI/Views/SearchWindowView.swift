@@ -2,6 +2,7 @@ import SwiftUI
 import AppKit
 
 struct SearchWindowView: View {
+    @Environment(\.colorScheme) var colorScheme
     @StateObject private var searchService = NoteSearchService.shared
     @State private var searchQuery: String = ""
     @State private var searchResults: [SearchResult] = []
@@ -11,6 +12,7 @@ struct SearchWindowView: View {
     @State private var windowID = UUID()
     @State private var eventMonitor: Any?
     @State private var clickMonitor: Any?
+    @State private var showRecentNotes: Bool = SettingsService.shared.settings.showSearchRecentNotes
     
     var body: some View {
         VStack(spacing: 0) {
@@ -19,34 +21,47 @@ struct SearchWindowView: View {
                 .padding(.top, 20)
                 .padding(.bottom, 12)
             
-            if searchResults.isEmpty {
-                emptyState
+            if showRecentNotes {
+                if searchResults.isEmpty {
+                    emptyState
+                } else {
+                    resultsList
+                }
             } else {
-                resultsList
+                Spacer()
             }
         }
         .frame(width: 640, height: 500)
         .background(
             RoundedRectangle(cornerRadius: 20)
                 .fill(.ultraThinMaterial)
-                .shadow(color: Color.black.opacity(0.3), radius: 40, x: 0, y: 20)
+                .shadow(color: colorScheme == .dark ? Color.black.opacity(0.3) : Color.black.opacity(0.1), radius: 40, x: 0, y: 20)
         )
         .overlay(
             RoundedRectangle(cornerRadius: 20)
-                .stroke(Color.white.opacity(0.2), lineWidth: 1)
+                .stroke(ColorSchemeHelper.borderColor(), lineWidth: 1)
         )
         .onAppear {
             setupEventMonitors()
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                 isSearchFieldFocused = true
             }
-            performSearch()
+            if showRecentNotes {
+                performSearch()
+            }
         }
         .onDisappear {
             removeEventMonitors()
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("ResetSearchWindow"))) { _ in
             resetSearchState()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsChanged"))) { _ in
+            showRecentNotes = SettingsService.shared.settings.showSearchRecentNotes
+            if !showRecentNotes {
+                searchResults = []
+                searchQuery = ""
+            }
         }
         .id(windowID)
     }
@@ -76,7 +91,7 @@ struct SearchWindowView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: 12)
-                .stroke(Color.gray.opacity(0.2), lineWidth: 1)
+                .stroke(ColorSchemeHelper.borderColor(), lineWidth: 1)
         )
     }
     

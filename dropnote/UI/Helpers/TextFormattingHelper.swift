@@ -88,8 +88,7 @@ struct TextFormattingHelper {
     // MARK: - Private Methods
     
     private static func preserveSelection(_ textView: NSTextView, originalRange: NSRange) {
-        DispatchQueue.main.async {
-            textView.selectedRanges = [NSValue(range: originalRange)]
-        }
+        textView.selectedRanges = [NSValue(range: originalRange)]
+        textView.scrollRangeToVisible(originalRange)
     }
 }
