@@ -196,6 +196,11 @@ struct SearchWindowView: View {
     }
     
     private func handleKeyEvent(_ event: NSEvent) -> NSEvent? {
+        // Only handle keys while the search window is actually visible.
+        guard SearchWindowController.shared.window?.isVisible == true else {
+            return event
+        }
+
         switch Int(event.keyCode) {
         case 126: // Up arrow
             if !searchResults.isEmpty {
