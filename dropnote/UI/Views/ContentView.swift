@@ -546,21 +546,7 @@ struct ContentView: View {
             }
 
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
-                let settingsWindow = NSWindow(
-                    contentRect: NSRect(x: 0, y: 0, width: 400, height: 300),
-                    styleMask: [.titled, .closable, .resizable],
-                    backing: .buffered,
-                    defer: false
-                )
-                settingsWindow.center()
-                settingsWindow.isReleasedWhenClosed = false
-                settingsWindow.title = "Settings"
-
-                let settingsView = SettingsView()
-
-                settingsWindow.contentView = NSHostingView(rootView: settingsView)
-                settingsWindow.makeKeyAndOrderFront(nil)
-                NSApp.activate(ignoringOtherApps: true)
+                SettingsWindowController.shared.show()
             }
         }
     }

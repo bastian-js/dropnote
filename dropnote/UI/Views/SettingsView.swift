@@ -96,9 +96,6 @@ struct SettingsView: View {
         }
         .onDisappear {
             stopRecordingHotKey()
-            if !SettingsService.shared.settings.showInDock {
-                NSApplication.shared.setActivationPolicy(.accessory)
-            }
         }
     }
     
@@ -123,13 +120,6 @@ struct SettingsView: View {
                     isOn: $showInDock
                 ) { newValue in
                     updateSetting(showInDock: newValue)
-                    if !newValue {
-                        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-                            if NSApp.keyWindow?.title != "Settings" {
-                                NSApplication.shared.setActivationPolicy(.accessory)
-                            }
-                        }
-                    }
                 }
             }
             
@@ -368,7 +358,6 @@ struct SettingsView: View {
         searchHotKey = SettingsService.shared.settings.searchHotKey
         themeMode = SettingsService.shared.settings.themeMode
         showSearchRecentNotes = SettingsService.shared.settings.showSearchRecentNotes
-        NSApplication.shared.setActivationPolicy(.regular)
     }
     
     private func updateSetting(
