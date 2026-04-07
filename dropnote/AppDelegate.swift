@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         AppDelegate.shared = self
         
         setupStatusBar()
+        configureMainMenu()
         setupPopover()
         setupNotifications()
         applyStartupSetting()
@@ -56,6 +57,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         popover.behavior = .transient
         popover.contentViewController = NSHostingController(rootView: ContentView())
     }
+
+    private func configureMainMenu() {
+        let mainMenu = NSMenu()
+        let appMenuItem = NSMenuItem()
+        let appMenu = NSMenu()
+        let appName = Bundle.main.object(forInfoDictionaryKey: "CFBundleDisplayName") as? String
+            ?? Bundle.main.object(forInfoDictionaryKey: "CFBundleName") as? String
+            ?? "DropNote"
+
+        appMenuItem.submenu = appMenu
+        mainMenu.addItem(appMenuItem)
+
+        appMenu.addItem(NSMenuItem(title: "About \(appName)", action: #selector(showAbout(_:)), keyEquivalent: ""))
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(NSMenuItem(title: "Settings...", action: #selector(showSettings(_:)), keyEquivalent: ","))
+        appMenu.addItem(NSMenuItem.separator())
+        appMenu.addItem(NSMenuItem(title: "Hide \(appName)", action: #selector(hideApp(_:)), keyEquivalent: "h"))
+        appMenu.addItem(NSMenuItem(title: "Quit \(appName)", action: #selector(quitApp(_:)), keyEquivalent: "q"))
+
+        appMenu.items.forEach { item in
+            item.target = self
+        }
+
+        NSApplication.shared.mainMenu = mainMenu
+    }
     
     private func setupNotifications() {
         NotificationCenter.default.addObserver(
@@ -79,6 +105,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     
     @objc private func handleAppDidResignActive() {
         popover.performClose(nil)
+    }
+
+    @objc private func showAbout(_ sender: Any?) {
+        NSApplication.shared.orderFrontStandardAboutPanel(sender)
+    }
+
+    @objc private func showSettings(_ sender: Any?) {
+        SettingsWindowController.shared.show()
+        NSApplication.shared.activate(ignoringOtherApps: true)
+    }
+
+    @objc private func hideApp(_ sender: Any?) {
+        NSApplication.shared.hide(sender)
+    }
+
+    @objc private func quitApp(_ sender: Any?) {
+        NSApplication.shared.terminate(sender)
     }
     
     private func applyStartupSetting() {
