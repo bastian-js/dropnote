@@ -128,7 +128,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func showAbout(_ sender: Any?) {
-        NSApplication.shared.orderFrontStandardAboutPanel(sender)
+        AboutWindowController.shared.show()
     }
 
     @objc private func showSettings(_ sender: Any?) {
