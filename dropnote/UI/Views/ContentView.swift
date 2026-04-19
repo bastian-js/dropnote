@@ -5,56 +5,64 @@ import LocalAuthentication
 struct ContentView: View {
     @StateObject private var searchManager = SearchManager.shared
     @State private var notes: [Note] = []
+    @State private var todos: [TodoItem] = []
     @State private var selectedTab: Int = 0
     @State private var isLoadingNotes: Bool = true
-    
+
     @State private var isEditingTabTitle: Bool = false
     @State private var editedTabTitle: String = ""
     @FocusState private var isTextFieldFocused: Bool
-    
+
     @State private var showDeleteAlert: Bool = false
     @State private var deleteIndex: Int?
     @State private var showWordCounter: Bool
-    
+
     @State private var searchText: String = ""
     @State private var isSearching: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
-    
+
     @State private var showEditorToolbar: Bool = true
     @State private var noteIDToOpen: UUID?
     @State private var showSettingsMenu: Bool = false
-    
+
     @State private var isSaving: Bool = false
     @State private var lastSavedAt: Date?
     @State private var pendingSaveWorkItem: DispatchWorkItem?
     @State private var savingStatusTimer: Timer?
-    
+
     @State private var unlockedNoteIDs: Set<UUID> = []
     @State private var themeMode: String = "system"
     @State private var showSearchRecentNotes: Bool = true
     @State private var cachedFilteredIndices: [Int] = []
-    
+
+    // Todo tab state
+    @State private var showTodoTab: Bool
+    @State private var showingTodoTab: Bool = false
+
     @Environment(\.undoManager) private var undoManager
-    
+
     private let editorHeight: CGFloat = 200
     private let toolbarHeight: CGFloat = 38
     private let notesService = NotesFileService.shared
+    private let todoService = TodoFileService.shared
     private let settingsService = SettingsService.shared
-    
+
     init() {
         let settings = SettingsService.shared.settings
         _showWordCounter = State(initialValue: settings.showWordCounter)
         _themeMode = State(initialValue: settings.themeMode)
         _showSearchRecentNotes = State(initialValue: settings.showSearchRecentNotes)
+        _showTodoTab = State(initialValue: settings.showTodoTab)
         _notes = State(initialValue: [])
         _isLoadingNotes = State(initialValue: true)
     }
-    
+
     var body: some View {
         mainContent
             .preferredColorScheme(getColorScheme())
             .onAppear {
                 loadNotesIfNeeded()
+                loadTodos()
                 recomputeFilteredIndices()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
@@ -69,28 +77,32 @@ struct ContentView: View {
                 saveNotes()
             }
             .alert("Delete note?", isPresented: $showDeleteAlert, presenting: deleteIndex) { index in
-                Button("Delete", role: .destructive) {
-                    deleteNote(at: index)
-                }
+                Button("Delete", role: .destructive) { deleteNote(at: index) }
                 Button("Cancel", role: .cancel) {}
             } message: { _ in
                 Text("This note will be deleted permanently")
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsChanged"))) { _ in
-                showWordCounter = SettingsService.shared.settings.showWordCounter
-                themeMode = SettingsService.shared.settings.themeMode
-                showSearchRecentNotes = SettingsService.shared.settings.showSearchRecentNotes
+                let s = SettingsService.shared.settings
+                showWordCounter = s.showWordCounter
+                themeMode = s.themeMode
+                showSearchRecentNotes = s.showSearchRecentNotes
+                let newShowTodoTab = s.showTodoTab
+                showTodoTab = newShowTodoTab
+                if !newShowTodoTab && showingTodoTab {
+                    showingTodoTab = false
+                }
             }
-            .onChange(of: notes) { _, _ in
-                recomputeFilteredIndices()
-            }
-            .onChange(of: searchText) { _, _ in
-                recomputeFilteredIndices()
+            .onChange(of: notes) { _, _ in recomputeFilteredIndices() }
+            .onChange(of: searchText) { _, _ in recomputeFilteredIndices() }
+            // Selecting a note tab deselects the todo tab
+            .onChange(of: selectedTab) { _, _ in
+                if showingTodoTab { showingTodoTab = false }
             }
     }
-    
+
     // MARK: - Main View Components
-    
+
     @ViewBuilder
     private var mainContent: some View {
         let currentFilteredIndices = cachedFilteredIndices
@@ -114,15 +126,18 @@ struct ContentView: View {
                     notes[index].isPinned.toggle()
                     scheduleSave()
                 },
-                onRequestToggleLock: { index in
-                    toggleLock(noteIndex: index)
+                onRequestToggleLock: { index in toggleLock(noteIndex: index) },
+                showTodoTab: showTodoTab,
+                isTodoTabSelected: showingTodoTab,
+                onSelectTodoTab: {
+                    withAnimation(.easeInOut(duration: 0.15)) { showingTodoTab = true }
                 }
             )
-            
+
             noteArea(filteredIndices: currentFilteredIndices, activeIndex: currentActiveIndex)
                 .frame(maxHeight: .infinity)
-            
-            if let current = currentActiveIndex, showEditorToolbar {
+
+            if let current = currentActiveIndex, showEditorToolbar, !showingTodoTab {
                 EditorToolbar(
                     noteIndex: current,
                     notes: $notes,
@@ -130,9 +145,7 @@ struct ContentView: View {
                         deleteIndex = index
                         showDeleteAlert = true
                     },
-                    onRequestAddNote: {
-                        addNote()
-                    },
+                    onRequestAddNote: { addNote() },
                     onRequestTogglePin: { index in
                         notes[index].isPinned.toggle()
                         scheduleSave()
@@ -149,12 +162,10 @@ struct ContentView: View {
         .background(
             Color.clear
                 .contentShape(Rectangle())
-                .onTapGesture {
-                    closeDropdownsAndEditing()
-                }
+                .onTapGesture { closeDropdownsAndEditing() }
         )
     }
-    
+
     @ViewBuilder
     private var searchBar: some View {
         HStack(spacing: 8) {
@@ -169,7 +180,7 @@ struct ContentView: View {
             .popover(isPresented: $showSettingsMenu, arrowEdge: .top) {
                 settingsMenu
             }
-            
+
             if isSearching {
                 HStack(spacing: 6) {
                     TextField("Search", text: $searchText)
@@ -196,11 +207,9 @@ struct ContentView: View {
                             }
                         }
                         .onAppear {
-                            DispatchQueue.main.async {
-                                self.isSearchFieldFocused = true
-                            }
+                            DispatchQueue.main.async { self.isSearchFieldFocused = true }
                         }
-                    
+
                     Button {
                         withAnimation {
                             isSearching = false
@@ -216,53 +225,54 @@ struct ContentView: View {
             } else {
                 Spacer()
                 Button {
-                    withAnimation {
-                        isSearching = true
-                    }
+                    withAnimation { isSearching = true }
                 } label: {
-                    Image(systemName: "magnifyingglass")
-                        .padding(6)
+                    Image(systemName: "magnifyingglass").padding(6)
                 }
                 .buttonStyle(PlainButtonStyle())
             }
         }
         .padding(.horizontal)
     }
-    
+
     @ViewBuilder
     private func noteArea(filteredIndices: [Int], activeIndex: Int?) -> some View {
-        Group {
-            if filteredIndices.isEmpty {
-                emptyState
-            } else if let current = activeIndex {
-                NoteEditor(
-                    noteIndex: current,
-                    notes: $notes,
-                    unlockedNoteIDs: $unlockedNoteIDs,
-                    showWordCounter: $showWordCounter,
-                    onSave: scheduleSave,
-                    onUnlock: unlockNoteFlow,
-                    onToggleLock: toggleLock
-                )
+        if showingTodoTab {
+            TodoListView(todos: $todos, onSave: saveTodos)
                 .padding(.horizontal, 12)
                 .transition(.opacity)
+        } else {
+            Group {
+                if filteredIndices.isEmpty {
+                    emptyState
+                } else if let current = activeIndex {
+                    NoteEditor(
+                        noteIndex: current,
+                        notes: $notes,
+                        unlockedNoteIDs: $unlockedNoteIDs,
+                        showWordCounter: $showWordCounter,
+                        onSave: scheduleSave,
+                        onUnlock: unlockNoteFlow,
+                        onToggleLock: toggleLock
+                    )
+                    .padding(.horizontal, 12)
+                    .transition(.opacity)
+                }
             }
         }
     }
-    
+
     @ViewBuilder
     private var emptyState: some View {
         VStack(spacing: 12) {
             Spacer(minLength: 0)
-            
+
             if isLoadingNotes {
                 ProgressView()
                     .scaleEffect(1.2)
                     .padding(.bottom, 4)
-                
                 Text("Loading notes...")
                     .font(.title3.weight(.semibold))
-                
                 Text("Please wait while your notes are being loaded.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
@@ -271,16 +281,13 @@ struct ContentView: View {
                     .font(.system(size: 34, weight: .semibold))
                     .foregroundColor(.secondary)
                     .padding(.bottom, 4)
-                
                 Text("No notes yet")
                     .font(.title3.weight(.semibold))
-                
                 Text("Create your first note to get started.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 24)
-                
                 Button {
                     addNote()
                 } label: {
@@ -291,20 +298,20 @@ struct ContentView: View {
                 .buttonStyle(.borderedProminent)
                 .transition(.scale.combined(with: .opacity))
             }
-            
+
             Spacer(minLength: 0)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(16)
         .transition(.opacity)
     }
-    
+
     // MARK: - Computed Properties
-    
+
     private func computeFilteredIndices() -> [Int] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
         let baseIndices: [Int]
-        
+
         if trimmed.isEmpty {
             baseIndices = Array(notes.indices)
         } else {
@@ -314,13 +321,11 @@ struct ContentView: View {
                 notes[index].text.lowercased().contains(lowercasedQuery)
             }
         }
-        
+
         return baseIndices.sorted { a, b in
             let noteA = notes[a]
             let noteB = notes[b]
-            if noteA.isPinned != noteB.isPinned {
-                return noteA.isPinned && !noteB.isPinned
-            }
+            if noteA.isPinned != noteB.isPinned { return noteA.isPinned && !noteB.isPinned }
             return noteA.title.localizedCaseInsensitiveCompare(noteB.title) == .orderedAscending
         }
     }
@@ -328,16 +333,14 @@ struct ContentView: View {
     private func recomputeFilteredIndices() {
         cachedFilteredIndices = computeFilteredIndices()
     }
-    
+
     private func activeIndex(from indices: [Int]) -> Int? {
-        if indices.contains(selectedTab) {
-            return selectedTab
-        }
+        if indices.contains(selectedTab) { return selectedTab }
         return indices.first
     }
-    
+
     // MARK: - Private Methods
-    
+
     private func closeDropdownsAndEditing() {
         showSettingsMenu = false
         if isSearching {
@@ -360,6 +363,10 @@ struct ContentView: View {
                 showSettingsMenu = false
                 openSettings(nil)
             }
+            settingsMenuButton(title: "Notes Window", icon: "macwindow") {
+                showSettingsMenu = false
+                openFullWindow()
+            }
             Divider()
             settingsMenuButton(title: "Quit DropNote", icon: "power") {
                 showSettingsMenu = false
@@ -369,7 +376,7 @@ struct ContentView: View {
         .padding(12)
         .frame(width: 200)
     }
-    
+
     @ViewBuilder
     private func settingsMenuButton(title: String, icon: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {
@@ -386,56 +393,47 @@ struct ContentView: View {
         }
         .buttonStyle(.plain)
     }
-    
+
     private func loadNotesIfNeeded() {
-        guard isLoadingNotes else {
-            return
-        }
-        
+        guard isLoadingNotes else { return }
+
         DispatchQueue.global(qos: .userInitiated).async {
             if let loaded = notesService.loadNotes() {
                 DispatchQueue.main.async {
                     self.notes = loaded
                     self.isLoadingNotes = false
-                    handlePendingNoteSelection()
+                    self.handlePendingNoteSelection()
                 }
             } else {
-                DispatchQueue.main.async {
-                    self.isLoadingNotes = false
-                }
+                DispatchQueue.main.async { self.isLoadingNotes = false }
             }
         }
     }
-    
+
+    private func loadTodos() {
+        let loaded = todoService.loadTodos()
+        self.todos = loaded
+    }
+
     private func handlePendingNoteSelection() {
         guard let noteIDToOpen = searchManager.noteIDToOpen,
-              let index = notes.firstIndex(where: { $0.id == noteIDToOpen }) else {
-            return
-        }
-        
+              let index = notes.firstIndex(where: { $0.id == noteIDToOpen }) else { return }
         searchText = ""
         isSearching = false
         selectedTab = index
         searchManager.noteIDToOpen = nil
     }
-    
+
     private func handleSearchResultSelection(_ noteID: UUID?) {
-        guard let noteID = noteID, !isLoadingNotes else {
-            return
-        }
-        
-        guard let index = notes.firstIndex(where: { $0.id == noteID }) else {
-            return
-        }
-        
+        guard let noteID = noteID, !isLoadingNotes else { return }
+        guard let index = notes.firstIndex(where: { $0.id == noteID }) else { return }
         searchText = ""
         isSearching = false
-        withAnimation {
-            selectedTab = index
-        }
+        showingTodoTab = false
+        withAnimation { selectedTab = index }
         searchManager.noteIDToOpen = nil
     }
-    
+
     private func scheduleSave() {
         let currentFilteredIndices = cachedFilteredIndices
         if let current = activeIndex(from: currentFilteredIndices) {
@@ -443,17 +441,15 @@ struct ContentView: View {
         }
 
         let notesSnapshot = notes
-        
         pendingSaveWorkItem?.cancel()
         isSaving = true
-        
+
         let work = DispatchWorkItem {
             DispatchQueue.global(qos: .utility).async {
                 self.notesService.saveNotes(notesSnapshot)
                 DispatchQueue.main.async {
                     NoteSearchService.shared.indexNotes(with: notesSnapshot)
                 }
-
                 DispatchQueue.main.async {
                     self.lastSavedAt = Date()
                     self.savingStatusTimer?.invalidate()
@@ -463,61 +459,60 @@ struct ContentView: View {
                 }
             }
         }
-        
+
         pendingSaveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
-    
+
     private func saveNotes() {
         let snapshot = notes
         DispatchQueue.global(qos: .utility).async {
             self.notesService.saveNotes(snapshot)
         }
     }
-    
+
+    private func saveTodos() {
+        let snapshot = todos
+        DispatchQueue.global(qos: .utility).async {
+            self.todoService.saveTodos(snapshot)
+        }
+    }
+
     private func addNote() {
         let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? (notes.count + 1)
         var newNote = Note(title: "Note \(nextNumber)", text: "")
         newNote.updateModifiedDate()
-        
+
         withAnimation(.easeInOut(duration: 0.2)) {
             notes.append(newNote)
             selectedTab = notes.count - 1
+            showingTodoTab = false
         }
         saveNotes()
         NoteSearchService.shared.indexNotes(with: notes)
     }
-    
+
     private func deleteNote(at index: Int) {
         notes.remove(at: index)
         selectedTab = max(0, min(selectedTab, notes.count - 1))
         saveNotes()
         NoteSearchService.shared.indexNotes(with: notes)
     }
-    
+
     private func unlockNoteFlow(noteIndex: Int) {
         let note = notes[noteIndex]
-        guard note.isLocked else {
-            return
-        }
-        
+        guard note.isLocked else { return }
         Task { @MainActor in
-            let authenticated = await AuthenticationService.shared.authenticate(
-                reason: "Unlock \"\(note.title)\""
-            )
-            if authenticated {
-                unlockedNoteIDs.insert(note.id)
-            }
+            let authenticated = await AuthenticationService.shared.authenticate(reason: "Unlock \"\(note.title)\"")
+            if authenticated { unlockedNoteIDs.insert(note.id) }
         }
     }
-    
+
     private func toggleLock(noteIndex: Int) {
         let note = notes[noteIndex]
         if note.isLocked {
             Task { @MainActor in
-                let authenticated = await AuthenticationService.shared.authenticate(
-                    reason: "Remove lock from \"\(note.title)\""
-                )
+                let authenticated = await AuthenticationService.shared.authenticate(reason: "Remove lock from \"\(note.title)\"")
                 if authenticated {
                     notes[noteIndex].isLocked = false
                     unlockedNoteIDs.remove(note.id)
@@ -535,7 +530,7 @@ struct ContentView: View {
             }
         }
     }
-    
+
     private func openSettings(_ sender: Any?) {
         DispatchQueue.main.async {
             if let appDelegate = AppDelegate.shared,
@@ -544,27 +539,34 @@ struct ContentView: View {
                 popover.performClose(nil)
                 popover.close()
             }
-
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
                 SettingsWindowController.shared.show()
             }
         }
     }
-    
-    private func quitApp(_ sender: Any?) {
+
+    private func openFullWindow() {
         DispatchQueue.main.async {
-            NSApplication.shared.terminate(nil)
+            if let appDelegate = AppDelegate.shared,
+               let popover = appDelegate.popover,
+               popover.isShown {
+                popover.performClose(nil)
+            }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                FullWindowController.shared.show()
+            }
         }
     }
-    
+
+    private func quitApp(_ sender: Any?) {
+        DispatchQueue.main.async { NSApplication.shared.terminate(nil) }
+    }
+
     private func getColorScheme() -> ColorScheme? {
         switch themeMode {
-        case "light":
-            return .light
-        case "dark":
-            return .dark
-        default: // system
-            return nil
+        case "light": return .light
+        case "dark": return .dark
+        default: return nil
         }
     }
 }

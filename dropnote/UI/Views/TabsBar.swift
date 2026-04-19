@@ -7,15 +7,23 @@ struct TabsBar: View {
     @Binding var isEditingTabTitle: Bool
     @Binding var editedTabTitle: String
     @FocusState.Binding var isTextFieldFocused: Bool
-    
+
     let onRequestDelete: (Int) -> Void
     let onPersist: () -> Void
     let onRequestTogglePin: (Int) -> Void
     let onRequestToggleLock: (Int) -> Void
-    
+
+    // Todo tab support
+    var showTodoTab: Bool = false
+    var isTodoTabSelected: Bool = false
+    var onSelectTodoTab: (() -> Void)? = nil
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                if showTodoTab {
+                    todoTabButton
+                }
                 ForEach(filteredIndices, id: \.self) { index in
                     tabItem(index: index)
                 }
@@ -24,7 +32,33 @@ struct TabsBar: View {
             .padding(.vertical, 2)
         }
     }
-    
+
+    // MARK: - Todo Tab
+
+    @ViewBuilder
+    private var todoTabButton: some View {
+        Button {
+            onSelectTodoTab?()
+        } label: {
+            HStack(spacing: 5) {
+                Image(systemName: "checkmark.circle\(isTodoTabSelected ? ".fill" : "")")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(isTodoTabSelected ? .accentColor : .secondary)
+                Text("Todos")
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(isTodoTabSelected ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
+            .cornerRadius(6)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
+            .fixedSize(horizontal: true, vertical: false)
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Note Tabs
+
     @ViewBuilder
     private func tabItem(index: Int) -> some View {
         if isEditingTabTitle && selectedTab == index {
@@ -33,7 +67,7 @@ struct TabsBar: View {
             selectableTabButton(index: index)
         }
     }
-    
+
     @ViewBuilder
     private func editingTabTextField(index: Int) -> some View {
         TextField("", text: $editedTabTitle, onCommit: {
@@ -48,9 +82,7 @@ struct TabsBar: View {
         .cornerRadius(6)
         .fixedSize(horizontal: true, vertical: false)
         .onChange(of: isTextFieldFocused) { _, focused in
-            guard !focused, isEditingTabTitle, selectedTab == index else {
-                return
-            }
+            guard !focused, isEditingTabTitle, selectedTab == index else { return }
             commitTabTitleEdit(index: index)
         }
         .onAppear {
@@ -59,7 +91,7 @@ struct TabsBar: View {
             }
         }
     }
-    
+
     @ViewBuilder
     private func selectableTabButton(index: Int) -> some View {
         Button {
@@ -71,14 +103,13 @@ struct TabsBar: View {
                         .font(.system(size: 10, weight: .semibold))
                         .foregroundColor(.secondary)
                 }
-
                 Text(notes[index].title)
                     .lineLimit(1)
             }
             .frame(minWidth: 72, alignment: .leading)
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
-            .background(selectedTab == index ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
+            .background(!isTodoTabSelected && selectedTab == index ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
             .cornerRadius(6)
             .contentShape(RoundedRectangle(cornerRadius: 6))
             .fixedSize(horizontal: true, vertical: false)
@@ -92,25 +123,19 @@ struct TabsBar: View {
             }
         )
         .contextMenu {
-            Button(notes[index].isPinned ? "Unpin" : "Pin") {
-                onRequestTogglePin(index)
-            }
+            Button(notes[index].isPinned ? "Unpin" : "Pin") { onRequestTogglePin(index) }
             Button("Edit Title") {
                 editedTabTitle = notes[index].title
                 isEditingTabTitle = true
                 selectedTab = index
             }
-            Button(notes[index].isLocked ? "Remove Lock" : "Lock") {
-                onRequestToggleLock(index)
-            }
-            Button("Delete Note", role: .destructive) {
-                onRequestDelete(index)
-            }
+            Button(notes[index].isLocked ? "Remove Lock" : "Lock") { onRequestToggleLock(index) }
+            Button("Delete Note", role: .destructive) { onRequestDelete(index) }
         }
     }
-    
-    // MARK: - Private Methods
-    
+
+    // MARK: - Helpers
+
     private func commitTabTitleEdit(index: Int) {
         let trimmed = editedTabTitle.trimmingCharacters(in: .whitespacesAndNewlines)
         if !trimmed.isEmpty {

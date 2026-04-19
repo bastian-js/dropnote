@@ -3,82 +3,97 @@ import AppKit
 
 final class HotKeyManager {
     static let shared = HotKeyManager()
-    
-    private var hotKeyRef: EventHotKeyRef?
+
+    // Search hotkey (id = 1)
+    private var searchHotKeyRef: EventHotKeyRef?
+    // Full-window hotkey (id = 2)
+    private var fullWindowHotKeyRef: EventHotKeyRef?
+    // Single shared event handler for all hotkeys
     private var eventHandler: EventHandlerRef?
-    
+
     private init() {}
-    
+
+    // MARK: - Search Hotkey
+
     @discardableResult
     func registerGlobalSearchHotKey(keyCode: UInt32, modifiers: UInt32) -> OSStatus {
-        unregisterGlobalSearchHotKey()
+        unregisterHotKey(&searchHotKeyRef)
         installEventHandlerIfNeeded()
-        
-        var hotKeyID = EventHotKeyID(signature: OSType(0x48544B59), id: 1) // 'HTKY'
-        var hotKeyRef: EventHotKeyRef?
-        
-        let status = RegisterEventHotKey(
-            keyCode,
-            modifiers,
-            hotKeyID,
-            GetApplicationEventTarget(),
-            0,
-            &hotKeyRef
-        )
-        
-        if status == noErr {
-            self.hotKeyRef = hotKeyRef
-        }
-        
+        return registerHotKey(keyCode: keyCode, modifiers: modifiers, id: 1, ref: &searchHotKeyRef)
+    }
+
+    func updateGlobalSearchHotKey(keyCode: UInt32, modifiers: UInt32) -> Bool {
+        return registerGlobalSearchHotKey(keyCode: keyCode, modifiers: modifiers) == noErr
+    }
+
+    func unregisterGlobalSearchHotKey() {
+        unregisterHotKey(&searchHotKeyRef)
+    }
+
+    // MARK: - Full-Window Hotkey
+
+    @discardableResult
+    func registerFullWindowHotKey(keyCode: UInt32, modifiers: UInt32) -> OSStatus {
+        unregisterHotKey(&fullWindowHotKeyRef)
+        installEventHandlerIfNeeded()
+        return registerHotKey(keyCode: keyCode, modifiers: modifiers, id: 2, ref: &fullWindowHotKeyRef)
+    }
+
+    func updateFullWindowHotKey(keyCode: UInt32, modifiers: UInt32) -> Bool {
+        return registerFullWindowHotKey(keyCode: keyCode, modifiers: modifiers) == noErr
+    }
+
+    // MARK: - Private Helpers
+
+    private func registerHotKey(keyCode: UInt32, modifiers: UInt32, id: UInt32, ref: inout EventHotKeyRef?) -> OSStatus {
+        var hotKeyID = EventHotKeyID(signature: OSType(0x44524F50), id: id) // 'DROP'
+        var newRef: EventHotKeyRef?
+        let status = RegisterEventHotKey(keyCode, modifiers, hotKeyID, GetApplicationEventTarget(), 0, &newRef)
+        if status == noErr { ref = newRef }
         return status
     }
-    
-    func updateGlobalSearchHotKey(keyCode: UInt32, modifiers: UInt32) -> Bool {
-        let status = registerGlobalSearchHotKey(keyCode: keyCode, modifiers: modifiers)
-        return status == noErr
+
+    private func unregisterHotKey(_ ref: inout EventHotKeyRef?) {
+        if let r = ref { UnregisterEventHotKey(r); ref = nil }
     }
-    
-    func unregisterGlobalSearchHotKey() {
-        if let hotKeyRef = hotKeyRef {
-            UnregisterEventHotKey(hotKeyRef)
-            self.hotKeyRef = nil
-        }
-        
-        if let eventHandler = eventHandler {
-            RemoveEventHandler(eventHandler)
-            self.eventHandler = nil
-        }
-    }
-    
+
     private func installEventHandlerIfNeeded() {
-        guard eventHandler == nil else {
-            return
-        }
-        
+        guard eventHandler == nil else { return }
+
         var eventType = EventTypeSpec(
             eventClass: OSType(kEventClassKeyboard),
             eventKind: UInt32(kEventHotKeyPressed)
         )
-        
+
         var handler: EventHandlerRef?
         InstallEventHandler(
             GetApplicationEventTarget(),
-            { (_, _, _) -> OSStatus in
-                HotKeyManager.shared.handleHotKeyEvent()
+            { (_, theEvent, _) -> OSStatus in
+                var hkID = EventHotKeyID()
+                GetEventParameter(
+                    theEvent,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &hkID
+                )
+                HotKeyManager.shared.handleHotKeyPress(id: hkID.id)
                 return noErr
             },
-            1,
-            &eventType,
-            nil,
-            &handler
+            1, &eventType, nil, &handler
         )
-        
         eventHandler = handler
     }
-    
-    private func handleHotKeyEvent() {
+
+    func handleHotKeyPress(id: UInt32) {
         DispatchQueue.main.async {
-            SearchWindowController.shared.toggle()
+            switch id {
+            case 1: SearchWindowController.shared.toggle()
+            case 2: FullWindowController.shared.show()
+            default: break
+            }
         }
     }
 }
