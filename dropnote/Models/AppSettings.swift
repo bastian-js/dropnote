@@ -30,6 +30,7 @@ struct AppSettings: Codable {
     var showSearchRecentNotes: Bool = true
     var showTodoTab: Bool = true
     var sidebarExpanded: Bool = true
+    var userTags: [String] = ["Work", "Personal", "Urgent"]
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -43,6 +44,7 @@ struct AppSettings: Codable {
         showSearchRecentNotes  = try c.decodeIfPresent(Bool.self,           forKey: .showSearchRecentNotes)  ?? true
         showTodoTab            = try c.decodeIfPresent(Bool.self,           forKey: .showTodoTab)            ?? true
         sidebarExpanded        = try c.decodeIfPresent(Bool.self,           forKey: .sidebarExpanded)        ?? true
+        userTags               = try c.decodeIfPresent([String].self,       forKey: .userTags)               ?? ["Work", "Personal", "Urgent"]
     }
 
     init(
@@ -55,7 +57,8 @@ struct AppSettings: Codable {
         themeMode: String = "system",
         showSearchRecentNotes: Bool = true,
         showTodoTab: Bool = true,
-        sidebarExpanded: Bool = true
+        sidebarExpanded: Bool = true,
+        userTags: [String] = ["Work", "Personal", "Urgent"]
     ) {
         self.showInDock = showInDock
         self.startOnBoot = startOnBoot
@@ -67,5 +70,6 @@ struct AppSettings: Codable {
         self.showSearchRecentNotes = showSearchRecentNotes
         self.showTodoTab = showTodoTab
         self.sidebarExpanded = sidebarExpanded
+        self.userTags = userTags
     }
 }

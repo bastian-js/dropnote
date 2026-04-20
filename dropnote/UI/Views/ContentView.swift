@@ -238,7 +238,7 @@ struct ContentView: View {
     @ViewBuilder
     private func noteArea(filteredIndices: [Int], activeIndex: Int?) -> some View {
         if showingTodoTab {
-            TodoListView(todos: $todos, onSave: saveTodos)
+            TodoListView(todos: $todos, hideCompleted: true, onSave: saveTodos)
                 .padding(.horizontal, 12)
                 .transition(.opacity)
         } else {

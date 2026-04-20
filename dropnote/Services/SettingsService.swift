@@ -54,8 +54,13 @@ final class SettingsService: ObservableObject {
         }
     }
     
-    private func applyDockSetting() {
-        let policy: NSApplication.ActivationPolicy = settings.showInDock || NSApp.keyWindow?.title == "Settings" ? .regular : .accessory
+    func reapplyActivationPolicy() {
+        let hasVisibleWindow = NSApp.windows.contains { $0.isVisible && $0.styleMask.contains(.titled) }
+        let policy: NSApplication.ActivationPolicy = settings.showInDock || hasVisibleWindow ? .regular : .accessory
         NSApplication.shared.setActivationPolicy(policy)
+    }
+
+    private func applyDockSetting() {
+        reapplyActivationPolicy()
     }
 }

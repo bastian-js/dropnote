@@ -12,6 +12,7 @@ enum FullWindowSelection: Equatable {
 // MARK: - FullWindowView
 
 struct FullWindowView: View {
+    @Environment(\.colorScheme) private var colorScheme
     @State private var notes: [Note] = []
     @State private var todos: [TodoItem] = []
     @State private var selection: FullWindowSelection = .todos
@@ -42,7 +43,25 @@ struct FullWindowView: View {
         todos.filter { !$0.isCompleted }.count
     }
 
+    private var effectiveColorScheme: ColorScheme {
+        switch themeMode {
+        case "light": return .light
+        case "dark":  return .dark
+        default:      return colorScheme
+        }
+    }
+
     var body: some View {
+        ZStack {
+            LinearGradient(
+                colors: effectiveColorScheme == .dark
+                    ? [Color.black.opacity(0.18), Color.gray.opacity(0.08)]
+                    : [Color.white, Color.gray.opacity(0.03)],
+                startPoint: .topLeading,
+                endPoint: .bottomTrailing
+            )
+            .ignoresSafeArea()
+
         HStack(spacing: 0) {
             // Sidebar
             if sidebarExpanded {
@@ -67,8 +86,11 @@ struct FullWindowView: View {
                 )
                 .frame(width: 240)
                 .transition(.move(edge: .leading).combined(with: .opacity))
-
-                Divider()
+                .shadow(
+                    color: Color.black.opacity(effectiveColorScheme == .dark ? 0.25 : 0.08),
+                    radius: 12, x: 4, y: 0
+                )
+                .zIndex(1)
             }
 
             // Main panel
@@ -78,6 +100,7 @@ struct FullWindowView: View {
                 mainContent
             }
         }
+        } // ZStack
         .frame(minWidth: 760, minHeight: 520)
         .preferredColorScheme(resolvedColorScheme())
         .alert("Delete note?", isPresented: $showDeleteAlert) {
@@ -112,7 +135,7 @@ struct FullWindowView: View {
                     persistSidebar(true)
                 } label: {
                     Image(systemName: "sidebar.left")
-                        .font(.system(size: 13, weight: .medium))
+                        .font(.system(size: 14, weight: .medium))
                         .foregroundColor(.secondary)
                 }
                 .buttonStyle(.plain)
@@ -122,18 +145,16 @@ struct FullWindowView: View {
 
             switch selection {
             case .todos:
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 16, weight: .semibold))
-                    .foregroundColor(.accentColor)
                 Text("Todos")
-                    .font(.system(.title3, design: .rounded).weight(.semibold))
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
+                    .padding(.bottom, 2)
                 Spacer()
 
             case .note(let id):
                 if let idx = notes.firstIndex(where: { $0.id == id }) {
                     TextField("Note title", text: $notes[idx].title)
                         .textFieldStyle(.plain)
-                        .font(.system(.title3, design: .rounded).weight(.semibold))
+                        .font(.system(.title2, design: .rounded).weight(.semibold))
                         .onSubmit { scheduleSave() }
                         .onChange(of: notes[idx].title) { _, _ in scheduleSave() }
                     Spacer()
@@ -147,8 +168,9 @@ struct FullWindowView: View {
                 }
             }
         }
-        .padding(.horizontal, 20)
-        .frame(height: 48)
+        .padding(.leading, sidebarExpanded ? 20 : 80)
+        .padding(.trailing, 20)
+        .padding(.vertical, 18)
     }
 
     // MARK: - Main Content
@@ -322,6 +344,7 @@ struct FullWindowView: View {
 // MARK: - FullWindowSidebar
 
 struct FullWindowSidebar: View {
+    @Environment(\.colorScheme) private var colorScheme
     @Binding var notes: [Note]
     @Binding var selection: FullWindowSelection
     let pendingTodosCount: Int
@@ -344,7 +367,6 @@ struct FullWindowSidebar: View {
     var body: some View {
         VStack(spacing: 0) {
             sidebarHeader
-            Divider()
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     todosItem
@@ -363,30 +385,33 @@ struct FullWindowSidebar: View {
             Divider()
             sidebarFooter
         }
-        .background(Color.primary.opacity(0.025))
+        .background(
+            colorScheme == .dark
+                ? Color.black.opacity(0.28)
+                : Color(NSColor.controlBackgroundColor).opacity(0.85)
+        )
     }
 
     // MARK: Sidebar Header
 
     @ViewBuilder
     private var sidebarHeader: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "note.text")
-                .font(.system(size: 13, weight: .bold))
-                .foregroundColor(.accentColor)
+        HStack(spacing: 0) {
             Text("DropNote")
-                .font(.system(.subheadline, design: .rounded).weight(.bold))
+                .font(.system(.title2, design: .rounded).weight(.semibold))
+                .padding(.bottom, 2)
             Spacer()
             Button(action: onCollapse) {
                 Image(systemName: "sidebar.left")
-                    .font(.system(size: 13, weight: .medium))
+                    .font(.system(size: 14, weight: .medium))
                     .foregroundColor(.secondary)
             }
             .buttonStyle(.plain)
             .help("Hide Sidebar")
         }
-        .padding(.horizontal, 14)
-        .frame(height: 48)
+        .padding(.leading, 80)
+        .padding(.trailing, 14)
+        .padding(.vertical, 18)
     }
 
     // MARK: Todos Item
@@ -617,8 +642,7 @@ struct FullWindowEditor: View {
             )
             .padding(.horizontal, 48)
             .padding(.top, 16)
-
-            Divider()
+            .padding(.bottom, 16)
 
             EditorToolbar(
                 noteIndex: noteIndex,
@@ -629,8 +653,9 @@ struct FullWindowEditor: View {
                 onRequestToggleLock: { _ in onToggleLock() },
                 onSave: onSave
             )
-            .padding(.horizontal, 20)
-            .padding(.vertical, 8)
+            .padding(.horizontal, 48)
+            .padding(.top, 8)
+            .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: showWordCounter) { _, newVal in localShowWordCounter = newVal }

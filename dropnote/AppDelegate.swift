@@ -26,6 +26,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             popover.performClose(sender)
         } else {
+            NSApp.setActivationPolicy(.regular)
+            NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
         }
     }
@@ -74,6 +76,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         appMenu.addItem(.separator())
         appMenu.addItem(NSMenuItem(title: "Hide \(appName)", action: #selector(hideApp(_:)), keyEquivalent: "h"))
         appMenu.addItem(NSMenuItem(title: "Quit \(appName)", action: #selector(quitApp(_:)), keyEquivalent: "q"))
+        #if DEBUG
+        appMenu.addItem(.separator())
+        appMenu.addItem(NSMenuItem(title: "⚙︎ Reset Onboarding", action: #selector(devResetOnboarding(_:)), keyEquivalent: ""))
+        #endif
         appMenu.items.forEach { $0.target = self }
 
         // ── Format menu ───────────────────────────────────────────────
@@ -125,6 +131,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func handleAppDidResignActive() {
         popover.performClose(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            SettingsService.shared.reapplyActivationPolicy()
+        }
     }
 
     @objc private func showAbout(_ sender: Any?) {
@@ -144,6 +153,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // If full window is visible, tell it to create a new note
         NotificationCenter.default.post(name: Notification.Name("NewNoteRequested"), object: nil)
     }
+
+    #if DEBUG
+    @objc private func devResetOnboarding(_ sender: Any?) {
+        var s = SettingsService.shared.settings
+        s.hasCompletedOnboarding = false
+        SettingsService.shared.updateSetting(s)
+        showOnboardingWindow()
+    }
+    #endif
 
     @objc private func hideApp(_ sender: Any?) {
         NSApplication.shared.hide(sender)

@@ -11,15 +11,17 @@ final class FullWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        if let existing = window, existing.isVisible {
+        NSApp.setActivationPolicy(.regular)
+        NSApplication.shared.activate(ignoringOtherApps: true)
+
+        if let existing = window {
             existing.makeKeyAndOrderFront(nil)
-            NSApplication.shared.activate(ignoringOtherApps: true)
             return
         }
 
         let win = NSWindow(
             contentRect: NSRect(x: 0, y: 0, width: 1120, height: 760),
-            styleMask: [.titled, .closable, .miniaturizable, .resizable],
+            styleMask: [.titled, .closable, .miniaturizable, .resizable, .fullSizeContentView],
             backing: .buffered,
             defer: false
         )
@@ -28,22 +30,27 @@ final class FullWindowController: NSObject, NSWindowDelegate {
         win.isReleasedWhenClosed = false
         win.minSize = NSSize(width: 760, height: 520)
         win.delegate = self
-
-        win.center()
+        win.titlebarAppearsTransparent = true
+        win.titleVisibility = .hidden
 
         let hostingController = NSHostingController(rootView: FullWindowView())
         win.contentViewController = hostingController
+        // Force the desired initial size — NSHostingController would otherwise
+        // shrink the window to the SwiftUI view's ideal size on first layout.
+        win.setContentSize(NSSize(width: 1120, height: 760))
+        win.center()
 
         self.window = win
         win.makeKeyAndOrderFront(nil)
-        NSApplication.shared.activate(ignoringOtherApps: true)
     }
 
     // MARK: - NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        // Allow the window to close; just hide it so state is preserved
         sender.orderOut(nil)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            SettingsService.shared.reapplyActivationPolicy()
+        }
         return false
     }
 }

@@ -50,8 +50,9 @@ final class SettingsWindowController: NSWindowController {
 
 extension SettingsWindowController: NSWindowDelegate {
     func windowWillClose(_ notification: Notification) {
-        if !SettingsService.shared.settings.showInDock {
-            NSApp.setActivationPolicy(.accessory)
+        // Delay so the window is fully gone before we recheck visible windows.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            SettingsService.shared.reapplyActivationPolicy()
         }
     }
 }
