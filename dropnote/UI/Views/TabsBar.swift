@@ -17,6 +17,7 @@ struct TabsBar: View {
     var showTodoTab: Bool = false
     var isTodoTabSelected: Bool = false
     var onSelectTodoTab: (() -> Void)? = nil
+    var onSelectNoteTab: (() -> Void)? = nil
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
@@ -95,6 +96,7 @@ struct TabsBar: View {
     @ViewBuilder
     private func selectableTabButton(index: Int) -> some View {
         Button {
+            onSelectNoteTab?()
             selectedTab = index
         } label: {
             HStack(spacing: 6) {

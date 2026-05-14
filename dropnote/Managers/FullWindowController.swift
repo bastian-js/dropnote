@@ -47,10 +47,13 @@ final class FullWindowController: NSObject, NSWindowDelegate {
     // MARK: - NSWindowDelegate
 
     func windowShouldClose(_ sender: NSWindow) -> Bool {
-        sender.orderOut(nil)
+        // Release the window so AppKit, the NSHostingController, and all SwiftUI
+        // state (including NSTextView + glyph layout) can be deallocated.
+        // show() will create a fresh window next time.
+        window = nil
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             SettingsService.shared.reapplyActivationPolicy()
         }
-        return false
+        return true
     }
 }

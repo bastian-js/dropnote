@@ -49,7 +49,7 @@ final class NoteSearchService: ObservableObject {
                     note: note,
                     score: 0,
                     matchedInTitle: false,
-                    preview: getPreview(from: note.text, query: "", maxLength: 80),
+                    preview: getPreview(from: note.textLowercased, query: "", maxLength: 80),
                     highlightRanges: []
                 )
             }
@@ -83,7 +83,7 @@ final class NoteSearchService: ObservableObject {
         }
 
         return scoredResults.prefix(limit).map { result in
-            let preview = getPreview(from: result.note.text, query: queryLowercased, maxLength: 100)
+            let preview = getPreview(from: result.note.textLowercased, query: queryLowercased, maxLength: 100)
             let highlightRanges = findHighlightRanges(in: preview, query: queryLowercased)
             
             return SearchResult(
@@ -190,7 +190,6 @@ final class NoteSearchService: ObservableObject {
             IndexedNote(
                 id: note.id,
                 title: note.title,
-                text: note.text,
                 lastModified: note.lastModified ?? Date(),
                 titleLowercased: note.title.lowercased(),
                 textLowercased: note.text.lowercased()

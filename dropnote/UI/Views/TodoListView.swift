@@ -140,7 +140,7 @@ struct TodoListView: View {
     @ViewBuilder
     private var todoList: some View {
         ScrollView(showsIndicators: false) {
-            LazyVStack(spacing: 0) {
+            VStack(spacing: 0) {
                 ForEach(pendingTodos) { todo in
                     TodoRow(todo: todo, compact: compact, onToggle: toggleTodo, onDelete: deleteTodo)
                 }

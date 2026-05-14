@@ -4,8 +4,8 @@ import LocalAuthentication
 
 struct ContentView: View {
     @StateObject private var searchManager = SearchManager.shared
+    @ObservedObject private var todoService = TodoFileService.shared
     @State private var notes: [Note] = []
-    @State private var todos: [TodoItem] = []
     @State private var selectedTab: Int = 0
     @State private var isLoadingNotes: Bool = true
 
@@ -44,7 +44,6 @@ struct ContentView: View {
     private let editorHeight: CGFloat = 200
     private let toolbarHeight: CGFloat = 38
     private let notesService = NotesFileService.shared
-    private let todoService = TodoFileService.shared
     private let settingsService = SettingsService.shared
 
     init() {
@@ -62,7 +61,6 @@ struct ContentView: View {
             .preferredColorScheme(getColorScheme())
             .onAppear {
                 loadNotesIfNeeded()
-                loadTodos()
                 recomputeFilteredIndices()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
@@ -131,6 +129,11 @@ struct ContentView: View {
                 isTodoTabSelected: showingTodoTab,
                 onSelectTodoTab: {
                     withAnimation(.easeInOut(duration: 0.15)) { showingTodoTab = true }
+                },
+                onSelectNoteTab: {
+                    if showingTodoTab {
+                        withAnimation(.easeInOut(duration: 0.15)) { showingTodoTab = false }
+                    }
                 }
             )
 
@@ -238,7 +241,7 @@ struct ContentView: View {
     @ViewBuilder
     private func noteArea(filteredIndices: [Int], activeIndex: Int?) -> some View {
         if showingTodoTab {
-            TodoListView(todos: $todos, hideCompleted: true, onSave: saveTodos)
+            TodoListView(todos: $todoService.todos, hideCompleted: true, onSave: todoService.save)
                 .padding(.horizontal, 12)
                 .transition(.opacity)
         } else {
@@ -410,11 +413,6 @@ struct ContentView: View {
         }
     }
 
-    private func loadTodos() {
-        let loaded = todoService.loadTodos()
-        self.todos = loaded
-    }
-
     private func handlePendingNoteSelection() {
         guard let noteIDToOpen = searchManager.noteIDToOpen,
               let index = notes.firstIndex(where: { $0.id == noteIDToOpen }) else { return }
@@ -471,14 +469,11 @@ struct ContentView: View {
         }
     }
 
-    private func saveTodos() {
-        let snapshot = todos
-        DispatchQueue.global(qos: .utility).async {
-            self.todoService.saveTodos(snapshot)
-        }
-    }
-
     private func addNote() {
+        // Cancel any pending debounced save so it can't overwrite with a stale snapshot.
+        pendingSaveWorkItem?.cancel()
+        pendingSaveWorkItem = nil
+
         let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? (notes.count + 1)
         var newNote = Note(title: "Note \(nextNumber)", text: "")
         newNote.updateModifiedDate()
@@ -493,6 +488,10 @@ struct ContentView: View {
     }
 
     private func deleteNote(at index: Int) {
+        // Cancel any pending debounced save so it can't overwrite with a stale snapshot.
+        pendingSaveWorkItem?.cancel()
+        pendingSaveWorkItem = nil
+
         notes.remove(at: index)
         selectedTab = max(0, min(selectedTab, notes.count - 1))
         saveNotes()

@@ -5,13 +5,12 @@ struct FormattingToolbar: View {
     @State private var activeBold = false
     @State private var activeItalic = false
     @State private var activeUnderline = false
-    @State private var updateTimer: Timer?
-    
+
     var onBoldTap: () -> Void
     var onItalicTap: () -> Void
     var onUnderlineTap: () -> Void
     var onUpdateFormats: ((Bool, Bool, Bool) -> Void)?
-    
+
     var body: some View {
         HStack(spacing: 4) {
             formatButton(
@@ -23,7 +22,7 @@ struct FormattingToolbar: View {
                 isActive: activeBold,
                 tooltip: "Bold"
             )
-            
+
             formatButton(
                 action: {
                     onItalicTap()
@@ -33,7 +32,7 @@ struct FormattingToolbar: View {
                 isActive: activeItalic,
                 tooltip: "Italic"
             )
-            
+
             formatButton(
                 action: {
                     onUnderlineTap()
@@ -48,14 +47,16 @@ struct FormattingToolbar: View {
         .padding(.vertical, 4)
         .background(.ultraThinMaterial)
         .cornerRadius(6)
-        .onAppear {
-            startUpdateTimer()
-        }
-        .onDisappear {
-            stopUpdateTimer()
+        .onReceive(NotificationCenter.default.publisher(for: NSTextView.didChangeSelectionNotification)) { notification in
+            guard let textView = notification.object as? NSTextView else { return }
+            let formats = TextFormattingHelper.getActiveFormats(from: textView)
+            activeBold = formats.bold
+            activeItalic = formats.italic
+            activeUnderline = formats.underline
+            onUpdateFormats?(formats.bold, formats.italic, formats.underline)
         }
     }
-    
+
     @ViewBuilder
     private func formatButton(
         action: @escaping () -> Void,
@@ -74,19 +75,7 @@ struct FormattingToolbar: View {
         .buttonStyle(PlainButtonStyle())
         .help(tooltip)
     }
-    
-    private func startUpdateTimer() {
-        stopUpdateTimer()
-        updateTimer = Timer.scheduledTimer(withTimeInterval: 0.2, repeats: true) { _ in
-            updateFormatStates()
-        }
-    }
-    
-    private func stopUpdateTimer() {
-        updateTimer?.invalidate()
-        updateTimer = nil
-    }
-    
+
     private func updateFormatStates() {
         if let window = NSApplication.shared.keyWindow,
            let textView = NSTextView.findInWindow(window) {

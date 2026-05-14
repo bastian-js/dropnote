@@ -13,8 +13,8 @@ enum FullWindowSelection: Equatable {
 
 struct FullWindowView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @ObservedObject private var todoService = TodoFileService.shared
     @State private var notes: [Note] = []
-    @State private var todos: [TodoItem] = []
     @State private var selection: FullWindowSelection = .todos
     @State private var sidebarExpanded: Bool
     @State private var unlockedNoteIDs: Set<UUID> = []
@@ -25,7 +25,6 @@ struct FullWindowView: View {
     @State private var pendingSaveWorkItem: DispatchWorkItem?
 
     private let notesService = NotesFileService.shared
-    private let todoService  = TodoFileService.shared
 
     init() {
         let s = SettingsService.shared.settings
@@ -40,7 +39,7 @@ struct FullWindowView: View {
     }
 
     private var pendingTodosCount: Int {
-        todos.filter { !$0.isCompleted }.count
+        todoService.todos.filter { !$0.isCompleted }.count
     }
 
     private var effectiveColorScheme: ColorScheme {
@@ -207,7 +206,7 @@ struct FullWindowView: View {
     private var todosArea: some View {
         HStack(alignment: .top, spacing: 0) {
             Spacer(minLength: 40)
-            TodoListView(todos: $todos, compact: false, showBorder: false, onSave: saveTodos)
+            TodoListView(todos: $todoService.todos, compact: false, showBorder: false, onSave: todoService.save)
                 .frame(maxWidth: 700)
             Spacer(minLength: 40)
         }
@@ -244,10 +243,8 @@ struct FullWindowView: View {
     private func loadData() {
         DispatchQueue.global(qos: .userInitiated).async {
             let loadedNotes = notesService.loadNotes() ?? []
-            let loadedTodos = todoService.loadTodos()
             DispatchQueue.main.async {
                 self.notes = loadedNotes
-                self.todos = loadedTodos
                 if let first = loadedNotes.first {
                     self.selection = .note(first.id)
                 }
@@ -319,11 +316,6 @@ struct FullWindowView: View {
         }
         pendingSaveWorkItem = work
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
-    }
-
-    private func saveTodos() {
-        let snapshot = todos
-        DispatchQueue.global(qos: .utility).async { self.todoService.saveTodos(snapshot) }
     }
 
     private func persistSidebar(_ expanded: Bool) {

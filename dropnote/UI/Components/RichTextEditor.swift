@@ -7,7 +7,12 @@ struct RichTextEditor: NSViewRepresentable {
     var onTextChange: () -> Void = {}
     var onAttributedChange: (Data?) -> Void = { _ in }
     
-    private static let rtfCache = NSCache<NSData, NSAttributedString>()
+    private static let rtfCache: NSCache<NSData, NSAttributedString> = {
+        let cache = NSCache<NSData, NSAttributedString>()
+        cache.countLimit = 20
+        cache.totalCostLimit = 6 * 1024 * 1024  // 6 MB total
+        return cache
+    }()
     
     class Coordinator: NSObject, NSTextViewDelegate {
         var parent: RichTextEditor
@@ -78,13 +83,14 @@ struct RichTextEditor: NSViewRepresentable {
         scrollView.autohidesScrollers = true
         scrollView.backgroundColor = .clear
         scrollView.drawsBackground = false
+        scrollView.focusRingType = .none
 
         return scrollView
     }
 
     
     private func createTextView() -> NSTextView {
-        let textView = NSTextView()
+        let textView = DropNoteTextView()
         textView.isEditable = true
         textView.isSelectable = true
         textView.string = text
@@ -102,7 +108,10 @@ struct RichTextEditor: NSViewRepresentable {
         // Rich text support
         textView.isRichText = true
         textView.allowsUndo = true
-        
+
+        // Only lay out text that's visible; saves significant memory for long notes.
+        textView.layoutManager?.allowsNonContiguousLayout = true
+
         return textView
     }
     
@@ -125,7 +134,7 @@ struct RichTextEditor: NSViewRepresentable {
             context.coordinator.isProgrammaticUpdate = true
             textView.textStorage?.setAttributedString(attributedString)
             context.coordinator.isProgrammaticUpdate = false
-            Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData)
+            Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData, cost: rtfData.count)
         }
         textView.selectedRanges = selectedRanges
         context.coordinator.lastLoadedRTF = rtfData
@@ -164,7 +173,7 @@ struct RichTextEditor: NSViewRepresentable {
                 return
             }
 
-            Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData)
+            Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData, cost: rtfData.count)
 
             DispatchQueue.main.async {
                 if context.coordinator.lastLoadedRTF == rtfData {
@@ -175,5 +184,43 @@ struct RichTextEditor: NSViewRepresentable {
                 }
             }
         }
+    }
+}
+
+// MARK: - DropNoteTextView
+
+private final class DropNoteTextView: NSTextView {
+
+    // Handle edit shortcuts directly so they work in every window context
+    // without relying on the menu system or the SwiftUI/AppKit responder chain.
+    override func performKeyEquivalent(with event: NSEvent) -> Bool {
+        guard event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+              let ch = event.charactersIgnoringModifiers else {
+            return super.performKeyEquivalent(with: event)
+        }
+        switch ch {
+        case "c": copy(nil);      return true
+        case "v": paste(nil);     return true
+        case "x": cut(nil);       return true
+        case "a": selectAll(nil); return true
+        case "z":
+            if event.modifierFlags.contains(.shift) { undoManager?.redo() }
+            else { undoManager?.undo() }
+            return true
+        default:
+            return super.performKeyEquivalent(with: event)
+        }
+    }
+
+    override func paste(_ sender: Any?) {
+        guard let plain = NSPasteboard.general.string(forType: .string) else {
+            super.paste(sender)
+            return
+        }
+        let range = selectedRange
+        let insertion = NSAttributedString(string: plain, attributes: typingAttributes)
+        textStorage?.replaceCharacters(in: range, with: insertion)
+        setSelectedRange(NSRange(location: range.location + (plain as NSString).length, length: 0))
+        didChangeText()
     }
 }

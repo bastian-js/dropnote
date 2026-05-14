@@ -10,6 +10,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var popover: NSPopover!
     var onboardingWindow: NSWindow?
 
+    private var popoverKeyMonitor: Any?
+
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
 
@@ -17,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         configureMainMenu()
         setupPopover()
         setupNotifications()
+        setupPopoverKeyMonitor()
         applyStartupSetting()
         checkAndShowOnboarding()
     }
@@ -29,12 +32,22 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             NSApp.setActivationPolicy(.regular)
             NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
+            // Make the window key AND make the NSTextView first responder so that
+            // keyboard shortcuts (Cmd+V etc.) reach it without requiring a click first.
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+                guard let window = self.popover.contentViewController?.view.window else { return }
+                window.makeKey()
+                if let tv = NSTextView.findInWindow(window) {
+                    window.makeFirstResponder(tv)
+                }
+            }
         }
     }
 
     deinit {
         NotificationCenter.default.removeObserver(self)
         HotKeyManager.shared.unregisterGlobalSearchHotKey()
+        if let m = popoverKeyMonitor { NSEvent.removeMonitor(m) }
     }
 
     // MARK: - Private Methods
@@ -82,6 +95,23 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         #endif
         appMenu.items.forEach { $0.target = self }
 
+        // ── Edit menu ─────────────────────────────────────────────────
+        let editMenuItem = NSMenuItem()
+        let editMenu = NSMenu(title: "Edit")
+        editMenuItem.submenu = editMenu
+        mainMenu.addItem(editMenuItem)
+
+        editMenu.addItem(NSMenuItem(title: "Undo", action: Selector(("undo:")), keyEquivalent: "z"))
+        let redoItem = NSMenuItem(title: "Redo", action: Selector(("redo:")), keyEquivalent: "z")
+        redoItem.keyEquivalentModifierMask = [.command, .shift]
+        editMenu.addItem(redoItem)
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Cut", action: #selector(NSText.cut(_:)), keyEquivalent: "x"))
+        editMenu.addItem(NSMenuItem(title: "Copy", action: #selector(NSText.copy(_:)), keyEquivalent: "c"))
+        editMenu.addItem(NSMenuItem(title: "Paste", action: #selector(NSText.paste(_:)), keyEquivalent: "v"))
+        editMenu.addItem(.separator())
+        editMenu.addItem(NSMenuItem(title: "Select All", action: #selector(NSText.selectAll(_:)), keyEquivalent: "a"))
+
         // ── Format menu ───────────────────────────────────────────────
         let formatMenuItem = NSMenuItem()
         let formatMenu = NSMenu(title: "Format")
@@ -108,6 +138,37 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         formatMenu.addItem(newNoteItem)
 
         NSApplication.shared.mainMenu = mainMenu
+    }
+
+    private func setupPopoverKeyMonitor() {
+        // Fallback for when makeKey() loses the race or canBecomeKey returns false.
+        // IMPORTANT: only intercept when the popover window is the key window (or
+        // no window is key). If any other window (e.g. the full notes window) is key
+        // we must let events flow normally so that window's text view can handle them.
+        popoverKeyMonitor = NSEvent.addLocalMonitorForEvents(matching: .keyDown) { [weak self] event in
+            guard let self,
+                  self.popover.isShown,
+                  event.modifierFlags.intersection(.deviceIndependentFlagsMask) == .command,
+                  let ch = event.charactersIgnoringModifiers,
+                  let popoverWindow = self.popover.contentViewController?.view.window else { return event }
+
+            let keyWindow = NSApp.keyWindow
+            guard keyWindow == nil || keyWindow == popoverWindow else { return event }
+
+            guard let tv = NSTextView.findInWindow(popoverWindow) else { return event }
+
+            switch ch {
+            case "v": tv.paste(nil)
+            case "c": tv.copy(nil)
+            case "x": tv.cut(nil)
+            case "a": tv.selectAll(nil)
+            case "z":
+                if event.modifierFlags.contains(.shift) { tv.undoManager?.redo() }
+                else { tv.undoManager?.undo() }
+            default: return event
+            }
+            return nil
+        }
     }
 
     private func setupNotifications() {
@@ -215,6 +276,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func setLaunchAtLogin(enabled: Bool) {
+        guard #available(macOS 13.0, *) else { return }
         do {
             if enabled { try SMAppService.mainApp.register() }
             else        { try SMAppService.mainApp.unregister() }
