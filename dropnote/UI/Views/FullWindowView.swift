@@ -81,7 +81,8 @@ struct FullWindowView: View {
                             sidebarExpanded = false
                         }
                         persistSidebar(false)
-                    }
+                    },
+                    onMoveNote: moveNote
                 )
                 .frame(width: 240)
                 .transition(.move(edge: .leading).combined(with: .opacity))
@@ -276,7 +277,11 @@ struct FullWindowView: View {
 
     private func togglePin(noteId: UUID) {
         guard let i = notes.firstIndex(where: { $0.id == noteId }) else { return }
+        let wasPinned = notes[i].isPinned
         notes[i].isPinned.toggle()
+        if !wasPinned {
+            notes.move(fromOffsets: IndexSet(integer: i), toOffset: 0)
+        }
         scheduleSave()
     }
 
@@ -303,6 +308,11 @@ struct FullWindowView: View {
             let ok = await AuthenticationService.shared.authenticate(reason: "Unlock \"\(note.title)\"")
             if ok { unlockedNoteIDs.insert(note.id) }
         }
+    }
+
+    private func moveNote(from: Int, to: Int) {
+        notes.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        scheduleSave()
     }
 
     private func scheduleSave() {
@@ -346,15 +356,11 @@ struct FullWindowSidebar: View {
     let onTogglePin: (UUID) -> Void
     let onOpenSettings: () -> Void
     let onCollapse: () -> Void
+    var onMoveNote: ((Int, Int) -> Void)? = nil
+
+    @State private var draggingNoteID: UUID?
 
     private var isTodosSelected: Bool { selection == .todos }
-
-    private var sortedNotes: [Note] {
-        notes.sorted {
-            if $0.isPinned != $1.isPinned { return $0.isPinned }
-            return $0.title.localizedCaseInsensitiveCompare($1.title) == .orderedAscending
-        }
-    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -365,8 +371,19 @@ struct FullWindowSidebar: View {
                     notesSectionDivider
                     notesSectionHeader
                     LazyVStack(spacing: 2) {
-                        ForEach(sortedNotes) { note in
+                        ForEach(notes) { note in
                             sidebarNoteRow(note: note)
+                                .opacity(draggingNoteID == note.id ? 0.45 : 1.0)
+                                .onDrag {
+                                    draggingNoteID = note.id
+                                    return NSItemProvider(object: note.id.uuidString as NSString)
+                                }
+                                .onDrop(of: ["public.text"], delegate: SidebarDropDelegate(
+                                    targetNote: note,
+                                    draggingNoteID: $draggingNoteID,
+                                    notes: $notes,
+                                    onMove: onMoveNote
+                                ))
                         }
                     }
                     .padding(.horizontal, 6)
@@ -489,47 +506,45 @@ struct FullWindowSidebar: View {
             return false
         }()
 
-        Button {
-            withAnimation(.easeInOut(duration: 0.1)) { selection = .note(note.id) }
-        } label: {
-            HStack(spacing: 8) {
-                if note.isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 8))
-                        .foregroundColor(isSelected ? .accentColor : .secondary.opacity(0.45))
-                        .padding(.top, 1)
-                }
+        HStack(spacing: 8) {
+            if note.isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 8))
+                    .foregroundColor(isSelected ? .accentColor : .secondary.opacity(0.45))
+                    .padding(.top, 1)
+            }
 
-                VStack(alignment: .leading, spacing: 1) {
-                    Text(note.title)
-                        .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
-                        .foregroundColor(isSelected ? .accentColor : .primary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(note.title)
+                    .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
+                    .foregroundColor(isSelected ? .accentColor : .primary)
+                    .lineLimit(1)
+                if !note.text.isEmpty {
+                    Text(note.text)
+                        .font(.system(size: 11))
+                        .foregroundColor(.secondary.opacity(0.65))
                         .lineLimit(1)
-                    if !note.text.isEmpty {
-                        Text(note.text)
-                            .font(.system(size: 11))
-                            .foregroundColor(.secondary.opacity(0.65))
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer()
-
-                if note.isLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 9))
-                        .foregroundColor(.secondary.opacity(0.45))
                 }
             }
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
-            .background(
-                RoundedRectangle(cornerRadius: 7)
-                    .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 7))
+
+            Spacer()
+
+            if note.isLocked {
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 9))
+                    .foregroundColor(.secondary.opacity(0.45))
+            }
         }
-        .buttonStyle(.plain)
+        .padding(.horizontal, 10)
+        .padding(.vertical, 6)
+        .background(
+            RoundedRectangle(cornerRadius: 7)
+                .fill(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+        )
+        .contentShape(RoundedRectangle(cornerRadius: 7))
+        .onTapGesture {
+            withAnimation(.easeInOut(duration: 0.1)) { selection = .note(note.id) }
+        }
         .contextMenu {
             Button(note.isPinned ? "Unpin" : "Pin") { onTogglePin(note.id) }
             Divider()
@@ -651,5 +666,33 @@ struct FullWindowEditor: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .onChange(of: showWordCounter) { _, newVal in localShowWordCounter = newVal }
+    }
+}
+
+// MARK: - SidebarDropDelegate
+
+private struct SidebarDropDelegate: DropDelegate {
+    let targetNote: Note
+    @Binding var draggingNoteID: UUID?
+    @Binding var notes: [Note]
+    let onMove: ((Int, Int) -> Void)?
+
+    func dropEntered(info: DropInfo) {
+        guard let dragID = draggingNoteID,
+              let fromIdx = notes.firstIndex(where: { $0.id == dragID }),
+              let toIdx = notes.firstIndex(where: { $0.id == targetNote.id }),
+              fromIdx != toIdx else { return }
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            onMove?(fromIdx, toIdx)
+        }
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingNoteID = nil
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        DropProposal(operation: .move)
     }
 }

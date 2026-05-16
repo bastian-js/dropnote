@@ -151,6 +151,16 @@ struct TodoListView: View {
                                 .font(.system(size: 11, weight: .semibold))
                                 .foregroundColor(.secondary)
                             Spacer()
+                            Button {
+                                withAnimation { todos.removeAll { $0.isCompleted } }
+                                onSave()
+                            } label: {
+                                Image(systemName: "trash")
+                                    .font(.system(size: 11, weight: .medium))
+                                    .foregroundColor(.secondary)
+                            }
+                            .buttonStyle(.plain)
+                            .help("Delete all completed")
                         }
                         .padding(.horizontal, 12)
                         .padding(.top, 10)

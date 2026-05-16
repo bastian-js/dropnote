@@ -19,6 +19,10 @@ struct TabsBar: View {
     var onSelectTodoTab: (() -> Void)? = nil
     var onSelectNoteTab: (() -> Void)? = nil
 
+    // Drag-to-reorder
+    var onMove: ((Int, Int) -> Void)? = nil
+    @State private var draggingIndex: Int?
+
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
@@ -95,35 +99,32 @@ struct TabsBar: View {
 
     @ViewBuilder
     private func selectableTabButton(index: Int) -> some View {
-        Button {
+        HStack(spacing: 6) {
+            if notes[index].isPinned {
+                Image(systemName: "pin.fill")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.secondary)
+            }
+            Text(notes[index].title)
+                .lineLimit(1)
+        }
+        .frame(minWidth: 72, alignment: .leading)
+        .padding(.horizontal, 8)
+        .padding(.vertical, 6)
+        .background(!isTodoTabSelected && selectedTab == index ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
+        .cornerRadius(6)
+        .contentShape(RoundedRectangle(cornerRadius: 6))
+        .fixedSize(horizontal: true, vertical: false)
+        // Double-tap first so SwiftUI disambiguates before single-tap fires
+        .onTapGesture(count: 2) {
+            editedTabTitle = notes[index].title
+            isEditingTabTitle = true
+            selectedTab = index
+        }
+        .onTapGesture(count: 1) {
             onSelectNoteTab?()
             selectedTab = index
-        } label: {
-            HStack(spacing: 6) {
-                if notes[index].isPinned {
-                    Image(systemName: "pin.fill")
-                        .font(.system(size: 10, weight: .semibold))
-                        .foregroundColor(.secondary)
-                }
-                Text(notes[index].title)
-                    .lineLimit(1)
-            }
-            .frame(minWidth: 72, alignment: .leading)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 6)
-            .background(!isTodoTabSelected && selectedTab == index ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
-            .cornerRadius(6)
-            .contentShape(RoundedRectangle(cornerRadius: 6))
-            .fixedSize(horizontal: true, vertical: false)
         }
-        .buttonStyle(.plain)
-        .simultaneousGesture(
-            TapGesture(count: 2).onEnded {
-                editedTabTitle = notes[index].title
-                isEditingTabTitle = true
-                selectedTab = index
-            }
-        )
         .contextMenu {
             Button(notes[index].isPinned ? "Unpin" : "Pin") { onRequestTogglePin(index) }
             Button("Edit Title") {
@@ -134,6 +135,18 @@ struct TabsBar: View {
             Button(notes[index].isLocked ? "Remove Lock" : "Lock") { onRequestToggleLock(index) }
             Button("Delete Note", role: .destructive) { onRequestDelete(index) }
         }
+        .opacity(draggingIndex == index ? 0.45 : 1.0)
+        .onDrag {
+            guard onMove != nil, filteredIndices.count == notes.count else { return NSItemProvider() }
+            draggingIndex = index
+            return NSItemProvider(object: "\(index)" as NSString)
+        }
+        .onDrop(of: ["public.text"], delegate: TabDropDelegate(
+            targetIndex: index,
+            draggingIndex: $draggingIndex,
+            canDrop: onMove != nil && filteredIndices.count == notes.count,
+            onMove: onMove
+        ))
     }
 
     // MARK: - Helpers
@@ -145,5 +158,31 @@ struct TabsBar: View {
             onPersist()
         }
         isEditingTabTitle = false
+    }
+}
+
+// MARK: - TabDropDelegate
+
+private struct TabDropDelegate: DropDelegate {
+    let targetIndex: Int
+    @Binding var draggingIndex: Int?
+    let canDrop: Bool
+    let onMove: ((Int, Int) -> Void)?
+
+    func dropEntered(info: DropInfo) {
+        guard canDrop, let from = draggingIndex, from != targetIndex else { return }
+        withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
+            onMove?(from, targetIndex)
+        }
+        draggingIndex = targetIndex
+    }
+
+    func performDrop(info: DropInfo) -> Bool {
+        draggingIndex = nil
+        return true
+    }
+
+    func dropUpdated(info: DropInfo) -> DropProposal? {
+        canDrop ? DropProposal(operation: .move) : DropProposal(operation: .forbidden)
     }
 }

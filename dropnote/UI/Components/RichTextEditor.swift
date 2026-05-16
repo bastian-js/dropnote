@@ -108,6 +108,7 @@ struct RichTextEditor: NSViewRepresentable {
         // Rich text support
         textView.isRichText = true
         textView.allowsUndo = true
+        textView.isAutomaticLinkDetectionEnabled = true
 
         // Only lay out text that's visible; saves significant memory for long notes.
         textView.layoutManager?.allowsNonContiguousLayout = true
@@ -121,10 +122,11 @@ struct RichTextEditor: NSViewRepresentable {
         }
 
         let selectedRanges = textView.selectedRanges
-        
+
         if let cachedString = Self.rtfCache.object(forKey: rtfData as NSData) {
             context.coordinator.isProgrammaticUpdate = true
             textView.textStorage?.setAttributedString(cachedString)
+            detectAndStyleURLs(in: textView)
             context.coordinator.isProgrammaticUpdate = false
         } else if let attributedString = try? NSAttributedString(
             data: rtfData,
@@ -133,13 +135,14 @@ struct RichTextEditor: NSViewRepresentable {
         ) {
             context.coordinator.isProgrammaticUpdate = true
             textView.textStorage?.setAttributedString(attributedString)
+            detectAndStyleURLs(in: textView)
             context.coordinator.isProgrammaticUpdate = false
             Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData, cost: rtfData.count)
         }
         textView.selectedRanges = selectedRanges
         context.coordinator.lastLoadedRTF = rtfData
     }
-    
+
     private func updateTextViewContent(_ textView: NSTextView, context: Context) {
         let currentText = text
 
@@ -159,6 +162,7 @@ struct RichTextEditor: NSViewRepresentable {
         if let cachedString = Self.rtfCache.object(forKey: rtfData as NSData) {
             context.coordinator.isProgrammaticUpdate = true
             textView.textStorage?.setAttributedString(cachedString)
+            detectAndStyleURLs(in: textView)
             context.coordinator.isProgrammaticUpdate = false
             textView.selectedRanges = selectedRanges
             return
@@ -179,11 +183,30 @@ struct RichTextEditor: NSViewRepresentable {
                 if context.coordinator.lastLoadedRTF == rtfData {
                     context.coordinator.isProgrammaticUpdate = true
                     textView.textStorage?.setAttributedString(attributedString)
+                    self.detectAndStyleURLs(in: textView)
                     context.coordinator.isProgrammaticUpdate = false
                     textView.selectedRanges = selectedRanges
                 }
             }
         }
+    }
+
+    private func detectAndStyleURLs(in textView: NSTextView) {
+        guard let textStorage = textView.textStorage else { return }
+        let string = textStorage.string
+        guard !string.isEmpty,
+              let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return }
+
+        let fullRange = NSRange(location: 0, length: (string as NSString).length)
+        let matches = detector.matches(in: string, range: fullRange)
+        guard !matches.isEmpty else { return }
+
+        textStorage.beginEditing()
+        for match in matches {
+            guard let url = match.url else { continue }
+            textStorage.addAttribute(.link, value: url, range: match.range)
+        }
+        textStorage.endEditing()
     }
 }
 

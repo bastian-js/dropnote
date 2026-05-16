@@ -120,10 +120,7 @@ struct ContentView: View {
                     showDeleteAlert = true
                 },
                 onPersist: saveNotes,
-                onRequestTogglePin: { index in
-                    notes[index].isPinned.toggle()
-                    scheduleSave()
-                },
+                onRequestTogglePin: { index in togglePin(noteIndex: index) },
                 onRequestToggleLock: { index in toggleLock(noteIndex: index) },
                 showTodoTab: showTodoTab,
                 isTodoTabSelected: showingTodoTab,
@@ -134,7 +131,8 @@ struct ContentView: View {
                     if showingTodoTab {
                         withAnimation(.easeInOut(duration: 0.15)) { showingTodoTab = false }
                     }
-                }
+                },
+                onMove: moveNote
             )
 
             noteArea(filteredIndices: currentFilteredIndices, activeIndex: currentActiveIndex)
@@ -149,10 +147,7 @@ struct ContentView: View {
                         showDeleteAlert = true
                     },
                     onRequestAddNote: { addNote() },
-                    onRequestTogglePin: { index in
-                        notes[index].isPinned.toggle()
-                        scheduleSave()
-                    },
+                    onRequestTogglePin: { index in togglePin(noteIndex: index) },
                     onRequestToggleLock: toggleLock,
                     onSave: scheduleSave
                 )
@@ -313,23 +308,13 @@ struct ContentView: View {
 
     private func computeFilteredIndices() -> [Int] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        let baseIndices: [Int]
-
         if trimmed.isEmpty {
-            baseIndices = Array(notes.indices)
-        } else {
-            let lowercasedQuery = trimmed.lowercased()
-            baseIndices = notes.indices.filter { index in
-                notes[index].title.lowercased().contains(lowercasedQuery) ||
-                notes[index].text.lowercased().contains(lowercasedQuery)
-            }
+            return Array(notes.indices)
         }
-
-        return baseIndices.sorted { a, b in
-            let noteA = notes[a]
-            let noteB = notes[b]
-            if noteA.isPinned != noteB.isPinned { return noteA.isPinned && !noteB.isPinned }
-            return noteA.title.localizedCaseInsensitiveCompare(noteB.title) == .orderedAscending
+        let lowercasedQuery = trimmed.lowercased()
+        return notes.indices.filter { index in
+            notes[index].title.lowercased().contains(lowercasedQuery) ||
+            notes[index].text.lowercased().contains(lowercasedQuery)
         }
     }
 
@@ -485,6 +470,29 @@ struct ContentView: View {
         }
         saveNotes()
         NoteSearchService.shared.indexNotes(with: notes)
+    }
+
+    private func togglePin(noteIndex: Int) {
+        let wasPinned = notes[noteIndex].isPinned
+        notes[noteIndex].isPinned.toggle()
+        if !wasPinned {
+            notes.move(fromOffsets: IndexSet(integer: noteIndex), toOffset: 0)
+            if selectedTab == noteIndex { selectedTab = 0 }
+            else if selectedTab < noteIndex { selectedTab += 1 }
+        }
+        scheduleSave()
+    }
+
+    private func moveNote(from: Int, to: Int) {
+        notes.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
+        if selectedTab == from {
+            selectedTab = to
+        } else if from < to, selectedTab > from, selectedTab <= to {
+            selectedTab -= 1
+        } else if from > to, selectedTab >= to, selectedTab < from {
+            selectedTab += 1
+        }
+        scheduleSave()
     }
 
     private func deleteNote(at index: Int) {

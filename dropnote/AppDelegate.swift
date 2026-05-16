@@ -29,8 +29,6 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         if popover.isShown {
             popover.performClose(sender)
         } else {
-            NSApp.setActivationPolicy(.regular)
-            NSApp.activate(ignoringOtherApps: true)
             popover.show(relativeTo: button.bounds, of: button, preferredEdge: .minY)
             // Make the window key AND make the NSTextView first responder so that
             // keyboard shortcuts (Cmd+V etc.) reach it without requiring a click first.
