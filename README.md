@@ -19,12 +19,6 @@
     <a href="https://github.com/bastian-js/dropnote/issues"><strong>Report a Bug</strong></a>
   </p>
 
-  <br />
-
-  <a href="https://www.producthunt.com/products/dropnote-2?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-dropnote-2" target="_blank">
-    <img alt="DropNote on Product Hunt" width="150" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1072286&theme=neutral&t=1770407004393" />
-  </a>
-
   <br /><br />
 
   <img
