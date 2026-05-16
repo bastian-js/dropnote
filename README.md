@@ -1,93 +1,150 @@
-<h1 align="center">
-  <strong>
-     DropNote
-   </strong>
-</h1>
+<div align="center">
+  <img src="https://raw.githubusercontent.com/bastian-js/dropnote.dev/master/public/images/icon.png" width="96" alt="DropNote" />
 
-<p align="center">
-  <img src="https://img.shields.io/badge/macOS-10.15%2B-black" />
-  <img src="https://img.shields.io/badge/Swift-5.9-orange" />
-  <img src="https://img.shields.io/badge/Menu%20Bar-App-blue" />
-  <img src="https://img.shields.io/badge/License-Non--Commercial-lightgrey" />
-</p>
+  <h1>DropNote</h1>
 
-<p align="center">
-  <a href="https://www.producthunt.com/products/dropnote-2?embed=true&amp;utm_source=badge-featured&amp;utm_medium=badge&amp;utm_campaign=badge-dropnote-2" target="_blank" rel="noopener noreferrer">
-    <img 
-      alt="DropNote - A lightweight macOS menu bar app for quick notes. | Product Hunt" 
-      width="150" 
-      src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1072286&amp;theme=neutral&amp;t=1770407004393"
-    />
+  <p><strong>Drop your notes. Access them instantly.</strong></p>
+
+  <p>
+    <img src="https://img.shields.io/badge/macOS-10.15%2B-000000?style=flat-square&logo=apple&logoColor=white" alt="macOS" />
+    <img src="https://img.shields.io/badge/Swift-5.9-F05138?style=flat-square&logo=swift&logoColor=white" alt="Swift" />
+    <img src="https://img.shields.io/badge/SwiftUI-blue?style=flat-square&logo=swift&logoColor=white" alt="SwiftUI" />
+    <img src="https://img.shields.io/github/v/release/bastian-js/dropnote?style=flat-square&label=Release&color=4d7ef5" alt="Latest Release" />
+    <img src="https://img.shields.io/badge/License-Non--Commercial-6b7280?style=flat-square" alt="License" />
+  </p>
+
+  <p>
+    <a href="https://dropnote.dev"><strong>Website</strong></a> &nbsp;·&nbsp;
+    <a href="https://github.com/bastian-js/dropnote/releases"><strong>Download</strong></a> &nbsp;·&nbsp;
+    <a href="https://github.com/bastian-js/dropnote/issues"><strong>Report a Bug</strong></a>
+  </p>
+
+  <br />
+
+  <a href="https://www.producthunt.com/products/dropnote-2?embed=true&utm_source=badge-featured&utm_medium=badge&utm_campaign=badge-dropnote-2" target="_blank">
+    <img alt="DropNote on Product Hunt" width="150" src="https://api.producthunt.com/widgets/embed-image/v1/featured.svg?post_id=1072286&theme=neutral&t=1770407004393" />
   </a>
-</p>
 
-<p align="center">
-  <strong>DropNote</strong> is a lightweight and focused macOS menu bar app for quick notes.
-</p>
+  <br /><br />
 
-<p align="center">
-  It stays out of your way while keeping your thoughts instantly accessible.
-</p>
+  <img
+    src="https://raw.githubusercontent.com/bastian-js/dropnote.dev/master/public/images/app-screenshot.png"
+    alt="DropNote App"
+    width="260"
+  />
 
-<p align="center">
-  Minimal software. Thoughtful features. No clutter.
-</p>
+</div>
+
+<br />
+
+---
+
+## What is DropNote?
+
+DropNote is a native macOS menu bar app for quick notes and todos. It lives in your menu bar and gives you instant access to your thoughts without opening a full app or breaking your focus.
+
+Built with **SwiftUI** and **AppKit** — fast, lightweight, and local-first.
+
+---
+
+## Screenshots
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/bastian-js/dropnote.dev/master/public/images/menubar_note.png" width="48%" alt="Menu Bar Notes" />
+  &nbsp;
+  <img src="https://raw.githubusercontent.com/bastian-js/dropnote.dev/master/public/images/menubar_todo.png" width="48%" alt="Menu Bar Todos" />
+</div>
+
+<br />
+
+<div align="center">
+  <img src="https://raw.githubusercontent.com/bastian-js/dropnote.dev/master/public/images/fullscreen_note.png" width="48%" alt="Full Screen Notes" />
+  &nbsp;
+  <img src="https://raw.githubusercontent.com/bastian-js/dropnote.dev/master/public/images/search.png" width="48%" alt="Quick Search" />
+</div>
 
 ---
 
 ## Features
 
-- **Quick Notes in the Menu Bar**
-- **Full Window Mode** — work with Notes and Todos in a large, focused view
-- **Integrated Todos** — manage tasks directly inside DropNote
-- **Quick Add Todos** — instantly add tasks without friction
-- **Advanced Todo Options** — optional due dates and tags
-- **Tabs & Pinned Notes**
-- **Fast Full-Text Search**
-- **Rich Text Editing** (Bold, Italic, Underline)
-- **Note Locking** (Password / Touch ID)
-- **Automatic Saving**
-- **Export as TXT & formatted PDF**
-- **Customizable Experience** — enable/disable Todos in onboarding or settings
-- **Keyboard Shortcuts** — including `⌘ + ⌥ + N` for full window mode
-- **Instant launch & fast note switching**
-- **Local-first** — no accounts, no cloud, no tracking
+| | Feature | Description |
+|---|---|---|
+| ⚡ | **Instant Access** | One click from the menu bar — always within reach |
+| 📝 | **Notes & Todos** | Free-form notes and structured task lists in one app |
+| 🔍 | **Full-Text Search** | Find any note or todo instantly |
+| 🔒 | **Note Locking** | Password or Touch ID protection per note |
+| 🖥️ | **Full Window Mode** | Distraction-free writing with `⌘ + ⌥ + N` |
+| 📌 | **Tabs & Pinned Notes** | Keep your most important notes at the top |
+| ✏️ | **Rich Text Editing** | Bold, italic, underline — no Markdown required |
+| 📤 | **Export** | Save notes as `.txt` or formatted `.pdf` |
+| 🏠 | **Local-First** | No accounts, no cloud, no tracking — ever |
+| ⚙️ | **Customizable** | Hotkeys, themes, and display options |
+
+---
 
 ## Installation
 
-1. Download the latest `.zip` from <https://github.com/bastian-js/dropnote/releases>
-2. Move **DropNote.app** into your **Applications** folder.
-3. On first launch: right-click → **Open**.
+### Option 1 — DMG *(recommended)*
 
-## Development
+1. Download **`DropNote-v2.6.dmg`** from [**Releases**](https://github.com/bastian-js/dropnote/releases)
+2. Open the DMG and drag **DropNote.app** into your **Applications** folder
+3. On first launch: right-click → **Open** to bypass Gatekeeper
 
-DropNote is written in **Swift** using **SwiftUI** and **AppKit**.
+### Option 2 — ZIP
 
-Contributions are welcome — issues and pull requests are appreciated.
+1. Download **`DropNote-v2.6.zip`** from [**Releases**](https://github.com/bastian-js/dropnote/releases)
+2. Unzip and move **DropNote.app** to your **Applications** folder
+3. On first launch: right-click → **Open** to bypass Gatekeeper
+
+### Option 3 — Build from Source
+
+```bash
+git clone https://github.com/bastian-js/dropnote.git
+open dropnote.xcodeproj
+```
+
+Build and run with `⌘ + R` in Xcode 15+.
+
+---
+
+## Tech Stack
+
+| | |
+|---|---|
+| Language | Swift 5.9 |
+| UI Framework | SwiftUI + AppKit |
+| Storage | Local file system |
+| Minimum OS | macOS 10.15 Catalina |
+
+---
+
+## Contributing
+
+Contributions are welcome. If you find a bug or have a feature request, please [open an issue](https://github.com/bastian-js/dropnote/issues) before submitting a pull request.
+
+---
 
 ## License
 
-This project is **source-available** under a **custom non-commercial license**.
+Source-available under a **custom non-commercial license**.
 
-You are free to:
-- use the app
-- modify the source code
-- share it with others
+- ✅ Free to use and modify for personal, non-commercial use
+- ❌ Commercial use, redistribution, or monetization requires explicit permission
 
-**For personal, non-commercial use only.**
+See [LICENSE](./LICENSE) for the full terms.
 
-Commercial use, redistribution, or monetization is **not allowed**  
-without explicit permission from the author.
-
-See the [LICENSE](./LICENSE) file for full details.
+---
 
 ## Attributions
 
-App & Menu bar icon based on **“sticky_note_2”** from  
-Google Material Icons (Apache License 2.0).
+App & menu bar icon based on *"sticky_note_2"* from Google Material Icons (Apache License 2.0), modified using [icon.kitchen](https://icon.kitchen).
 
-Modified using https://icon.kitchen.
+---
 
-## Support
-
-If you like DropNote, consider starring the repository — it helps a lot.
+<div align="center">
+  <sub>
+    Made with ♥ by <a href="https://github.com/bastian-js">bastian-js</a>
+    &nbsp;·&nbsp;
+    <a href="https://dropnote.dev">dropnote.dev</a>
+  </sub>
+</div>
