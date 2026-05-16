@@ -19,7 +19,7 @@
     <a href="https://github.com/bastian-js/dropnote/issues"><strong>Report a Bug</strong></a>
   </p>
 
-  <br /><br />
+  <br />
 
   <img
     src="https://raw.githubusercontent.com/bastian-js/dropnote.dev/master/public/images/app-screenshot.png"
