@@ -6,6 +6,7 @@ import LocalAuthentication
 
 enum FullWindowSelection: Equatable {
     case todos
+    case transcription
     case note(UUID)
 }
 
@@ -150,6 +151,12 @@ struct FullWindowView: View {
                     .padding(.bottom, 2)
                 Spacer()
 
+            case .transcription:
+                Text("Transcription")
+                    .font(.system(.title2, design: .rounded).weight(.semibold))
+                    .padding(.bottom, 2)
+                Spacer()
+
             case .note(let id):
                 if let idx = notes.firstIndex(where: { $0.id == id }) {
                     TextField("Note title", text: $notes[idx].title)
@@ -181,6 +188,9 @@ struct FullWindowView: View {
         case .todos:
             todosArea
 
+        case .transcription:
+            transcriptionArea
+
         case .note:
             if let idx = selectedNoteIndex {
                 FullWindowEditor(
@@ -199,6 +209,28 @@ struct FullWindowView: View {
                 emptyNoteState
             }
         }
+    }
+
+    // MARK: - Transcription Area
+
+    @ViewBuilder
+    private var transcriptionArea: some View {
+        HStack(alignment: .top, spacing: 0) {
+            Spacer(minLength: 40)
+            TranscriptionView(onSaveAsNote: { text in
+                addNote()
+                if let last = notes.last {
+                    if let i = notes.firstIndex(where: { $0.id == last.id }) {
+                        notes[i].text = text
+                        scheduleSave()
+                    }
+                }
+            })
+            .padding(.vertical, 20)
+            .frame(maxWidth: 700, maxHeight: .infinity)
+            Spacer(minLength: 40)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Todos Area
@@ -361,6 +393,7 @@ struct FullWindowSidebar: View {
     @State private var draggingNoteID: UUID?
 
     private var isTodosSelected: Bool { selection == .todos }
+    private var isTranscriptionSelected: Bool { selection == .transcription }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -368,6 +401,7 @@ struct FullWindowSidebar: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 0) {
                     todosItem
+                    transcriptionItem
                     notesSectionDivider
                     notesSectionHeader
                     LazyVStack(spacing: 2) {
@@ -465,6 +499,36 @@ struct FullWindowSidebar: View {
         .buttonStyle(.plain)
         .padding(.horizontal, 6)
         .padding(.top, 10)
+        .padding(.bottom, 2)
+    }
+
+    // MARK: Transcription Item
+
+    @ViewBuilder
+    private var transcriptionItem: some View {
+        Button {
+            withAnimation(.easeInOut(duration: 0.12)) { selection = .transcription }
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: isTranscriptionSelected ? "mic.fill" : "mic")
+                    .font(.system(size: 15, weight: .medium))
+                    .foregroundColor(isTranscriptionSelected ? .accentColor : .secondary)
+                    .frame(width: 18)
+                Text("Transcribe")
+                    .font(.system(size: 13, weight: isTranscriptionSelected ? .semibold : .medium))
+                    .foregroundColor(isTranscriptionSelected ? .accentColor : .primary)
+                Spacer()
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
+            .background(
+                RoundedRectangle(cornerRadius: 7)
+                    .fill(isTranscriptionSelected ? Color.accentColor.opacity(0.1) : Color.clear)
+            )
+            .contentShape(RoundedRectangle(cornerRadius: 7))
+        }
+        .buttonStyle(.plain)
+        .padding(.horizontal, 6)
         .padding(.bottom, 2)
     }
 

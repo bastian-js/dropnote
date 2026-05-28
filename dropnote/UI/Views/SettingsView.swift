@@ -11,6 +11,7 @@ struct SettingsView: View {
     @State private var themeMode = SettingsService.shared.settings.themeMode
     @State private var showSearchRecentNotes = SettingsService.shared.settings.showSearchRecentNotes
     @State private var showTodoTab = SettingsService.shared.settings.showTodoTab
+    @State private var showTranscriptionTab = SettingsService.shared.settings.showTranscriptionTab
     @State private var fullWindowHotKey = SettingsService.shared.settings.fullWindowHotKey
     @State private var searchHotKeyError: String? = nil
     @State private var fullWindowHotKeyError: String? = nil
@@ -18,7 +19,17 @@ struct SettingsView: View {
     @State private var isRecordingFullWindowHotKey = false
     @State private var hotKeyMonitor: Any?
     @State private var fullWindowHotKeyMonitor: Any?
+    @State private var popoverSizeLocked = SettingsService.shared.settings.popoverSizeLocked
+    @State private var showEditorToolbar = SettingsService.shared.settings.showEditorToolbar
+    @State private var userTags: [String] = SettingsService.shared.settings.userTags
+    @State private var newTagInput: String = ""
     @State private var selectedSection: String? = "General"
+    @State private var dangerAlert: DangerAlert? = nil
+
+    enum DangerAlert: Identifiable {
+        case deleteNotes, resetSettings, deleteEverything
+        var id: Int { hashValue }
+    }
 
     private var effectiveColorScheme: ColorScheme {
         switch themeMode {
@@ -51,6 +62,8 @@ struct SettingsView: View {
 
                     Spacer()
 
+                    sectionButton(title: "Danger Zone", icon: "exclamationmark.triangle.fill", tag: "Danger", destructive: true)
+
                     Text("© 2026 DropNote")
                         .font(.footnote)
                         .foregroundColor(.secondary)
@@ -81,6 +94,8 @@ struct SettingsView: View {
                             themesSection
                         } else if selectedSection == "Info" {
                             infoSection
+                        } else if selectedSection == "Danger" {
+                            dangerSection
                         }
                     }
                     .padding(.trailing, 20)
@@ -93,6 +108,31 @@ struct SettingsView: View {
         .frame(width: 560, height: 380)
         .preferredColorScheme(resolvedThemeColorScheme())
         .onAppear { reloadSettingsFromService() }
+        .alert(item: $dangerAlert) { alert in
+            switch alert {
+            case .deleteNotes:
+                return Alert(
+                    title: Text("Delete all notes?"),
+                    message: Text("All notes will be permanently deleted. This cannot be undone."),
+                    primaryButton: .destructive(Text("Delete All")) { performDeleteNotes() },
+                    secondaryButton: .cancel()
+                )
+            case .resetSettings:
+                return Alert(
+                    title: Text("Reset all settings?"),
+                    message: Text("All settings will be restored to their defaults."),
+                    primaryButton: .destructive(Text("Reset")) { performResetSettings() },
+                    secondaryButton: .cancel()
+                )
+            case .deleteEverything:
+                return Alert(
+                    title: Text("Delete everything?"),
+                    message: Text("All notes, todos, and settings will be wiped. DropNote will be in a clean state. This cannot be undone."),
+                    primaryButton: .destructive(Text("Wipe Everything")) { performDeleteEverything() },
+                    secondaryButton: .cancel()
+                )
+            }
+        }
         .onDisappear {
             stopRecordingHotKey()
             stopRecordingFullWindowHotKey()
@@ -127,6 +167,18 @@ struct SettingsView: View {
                     subtitle: "Show a todo list as the first tab in the popover",
                     isOn: $showTodoTab
                 ) { updateSetting(showTodoTab: $0) }
+
+                Divider().padding(.vertical, 4)
+
+                toggleRow(
+                    title: "Transcription tab",
+                    subtitle: "Show a mic tab to transcribe speech into text",
+                    isOn: $showTranscriptionTab
+                ) { updateSetting(showTranscriptionTab: $0) }
+            }
+
+            settingCard(title: "Tags") {
+                tagsEditor
             }
 
             settingCard(title: "Shortcuts") {
@@ -190,10 +242,165 @@ struct SettingsView: View {
                     subtitle: "Show word count at the bottom left",
                     isOn: $showWordCounter
                 ) { updateSetting(showWordCounter: $0) }
+
+                Divider().padding(.vertical, 4)
+
+                toggleRow(
+                    title: "Action toolbar",
+                    subtitle: "Show the note action bar at the bottom of the popover",
+                    isOn: $showEditorToolbar
+                ) { updateSetting(showEditorToolbar: $0) }
+            }
+
+            settingCard(title: "Popover") {
+                toggleRow(
+                    title: "Lock size",
+                    subtitle: "Prevent the popover from being resized by dragging",
+                    isOn: $popoverSizeLocked
+                ) { updateSetting(popoverSizeLocked: $0) }
+
+                Divider().padding(.vertical, 4)
+
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Reset size")
+                            .font(.callout.weight(.semibold))
+                        Text("Restore to default 320 × 480")
+                            .font(.footnote)
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Button {
+                        let defaultSize = CGSize(width: 320, height: 480)
+                        var s = SettingsService.shared.settings
+                        s.popoverWidth = 320
+                        s.popoverHeight = 480
+                        SettingsService.shared.updateSetting(s)
+                        AppDelegate.shared?.popover?.contentSize = defaultSize
+                        NotificationCenter.default.post(name: Notification.Name("PopoverSizeReset"), object: defaultSize)
+                    } label: {
+                        Label("Reset", systemImage: "arrow.counterclockwise")
+                            .font(.system(size: 12, weight: .semibold))
+                            .foregroundColor(.red)
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 6)
+                            .background(
+                                RoundedRectangle(cornerRadius: 8)
+                                    .fill(Color.red.opacity(effectiveColorScheme == .dark ? 0.18 : 0.1))
+                            )
+                    }
+                    .buttonStyle(.plain)
+                }
             }
 
             Spacer()
         }
+    }
+
+    @ViewBuilder
+    private var dangerSection: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            Text("Danger Zone")
+                .font(.system(.title2, design: .rounded).weight(.semibold))
+                .foregroundColor(.red)
+
+            settingCard(title: "Data") {
+                dangerRow(
+                    title: "Delete all notes",
+                    subtitle: "Permanently removes every note. Cannot be undone.",
+                    icon: "note.text",
+                    action: { dangerAlert = .deleteNotes }
+                )
+
+                Divider().padding(.vertical, 4)
+
+                dangerRow(
+                    title: "Delete all todos",
+                    subtitle: "Clears the entire todo list permanently.",
+                    icon: "checkmark.circle",
+                    action: { performDeleteTodos() }
+                )
+            }
+
+            settingCard(title: "Settings") {
+                dangerRow(
+                    title: "Reset all settings",
+                    subtitle: "Restores every setting to its factory default.",
+                    icon: "gearshape",
+                    action: { dangerAlert = .resetSettings }
+                )
+            }
+
+            settingCard(title: "Nuclear") {
+                dangerRow(
+                    title: "Wipe everything",
+                    subtitle: "Deletes all notes, todos, and settings. Clean slate.",
+                    icon: "trash",
+                    prominent: true,
+                    action: { dangerAlert = .deleteEverything }
+                )
+            }
+
+            Spacer()
+        }
+    }
+
+    @ViewBuilder
+    private func dangerRow(
+        title: String,
+        subtitle: String,
+        icon: String,
+        prominent: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        HStack {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(title)
+                    .font(.callout.weight(.semibold))
+                Text(subtitle)
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            }
+            Spacer()
+            Button(action: action) {
+                Label(prominent ? "Wipe" : "Delete", systemImage: prominent ? "trash.fill" : "trash")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.red)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 6)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(Color.red.opacity(effectiveColorScheme == .dark ? 0.18 : 0.1))
+                    )
+            }
+            .buttonStyle(.plain)
+        }
+    }
+
+    // MARK: - Danger Actions
+
+    private func performDeleteNotes() {
+        NotesFileService.shared.saveNotes([])
+        NoteSearchService.shared.indexNotes(with: [])
+        NotificationCenter.default.post(name: Notification.Name("NotesWiped"), object: nil)
+    }
+
+    private func performDeleteTodos() {
+        TodoFileService.shared.todos = []
+        TodoFileService.shared.save()
+    }
+
+    private func performResetSettings() {
+        let fresh = AppSettings()
+        SettingsService.shared.updateSetting(fresh)
+        reloadSettingsFromService()
+        NotificationCenter.default.post(name: Notification.Name("SettingsChanged"), object: nil)
+    }
+
+    private func performDeleteEverything() {
+        performDeleteNotes()
+        performDeleteTodos()
+        performResetSettings()
     }
 
     @ViewBuilder
@@ -263,21 +470,27 @@ struct SettingsView: View {
     // MARK: - Reusable Components
 
     @ViewBuilder
-    private func sectionButton(title: String, icon: String, tag: String) -> some View {
+    private func sectionButton(title: String, icon: String, tag: String, destructive: Bool = false) -> some View {
         let isSelected = selectedSection == tag
         Button { selectedSection = tag } label: {
             HStack(spacing: 10) {
                 Image(systemName: icon)
                     .font(.system(size: 14, weight: .semibold))
+                    .foregroundColor(destructive ? .red : .primary)
                 Text(title)
                     .font(.callout.weight(.semibold))
+                    .foregroundColor(destructive ? .red : .primary)
                 Spacer()
             }
             .padding(.vertical, 8)
             .padding(.horizontal, 6)
             .background(
                 RoundedRectangle(cornerRadius: 10)
-                    .fill(isSelected ? (effectiveColorScheme == .dark ? Color.white.opacity(0.18) : Color.gray.opacity(0.15)) : Color.clear)
+                    .fill(isSelected
+                        ? (destructive
+                            ? Color.red.opacity(effectiveColorScheme == .dark ? 0.22 : 0.12)
+                            : (effectiveColorScheme == .dark ? Color.white.opacity(0.18) : Color.gray.opacity(0.15)))
+                        : Color.clear)
             )
             .contentShape(Rectangle())
         }
@@ -301,6 +514,62 @@ struct SettingsView: View {
                         .stroke(effectiveColorScheme == .dark ? Color.white.opacity(0.06) : Color.gray.opacity(0.25), lineWidth: 1)
                 )
         )
+    }
+
+    @ViewBuilder
+    private var tagsEditor: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            if userTags.isEmpty {
+                Text("No tags yet. Add one below.")
+                    .font(.footnote)
+                    .foregroundColor(.secondary)
+            } else {
+                ForEach(userTags, id: \.self) { tag in
+                    HStack {
+                        Text(tag)
+                            .font(.callout.weight(.semibold))
+                        Spacer()
+                        Button {
+                            userTags.removeAll { $0 == tag }
+                            updateSetting(userTags: userTags)
+                        } label: {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 10, weight: .bold))
+                                .foregroundColor(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                    }
+                }
+                Divider()
+            }
+
+            HStack(spacing: 8) {
+                TextField("New tag…", text: $newTagInput)
+                    .textFieldStyle(.plain)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 7)
+                    .background(
+                        RoundedRectangle(cornerRadius: 8)
+                            .fill(effectiveColorScheme == .dark
+                                ? Color.white.opacity(0.06)
+                                : Color.gray.opacity(0.1))
+                    )
+                    .onSubmit { addTag() }
+
+                Button("Add") { addTag() }
+                    .buttonStyle(.bordered)
+                    .controlSize(.small)
+                    .disabled(newTagInput.trimmingCharacters(in: .whitespaces).isEmpty)
+            }
+        }
+    }
+
+    private func addTag() {
+        let trimmed = newTagInput.trimmingCharacters(in: .whitespaces)
+        guard !trimmed.isEmpty, !userTags.contains(trimmed) else { return }
+        userTags.append(trimmed)
+        updateSetting(userTags: userTags)
+        newTagInput = ""
     }
 
     @ViewBuilder
@@ -387,6 +656,10 @@ struct SettingsView: View {
         themeMode = s.themeMode
         showSearchRecentNotes = s.showSearchRecentNotes
         showTodoTab = s.showTodoTab
+        showTranscriptionTab = s.showTranscriptionTab
+        popoverSizeLocked = s.popoverSizeLocked
+        showEditorToolbar = s.showEditorToolbar
+        userTags = s.userTags
     }
 
     private func updateSetting(
@@ -397,22 +670,26 @@ struct SettingsView: View {
         fullWindowHotKey: HotKeySettings? = nil,
         themeMode: String? = nil,
         showSearchRecentNotes: Bool? = nil,
-        showTodoTab: Bool? = nil
+        showTodoTab: Bool? = nil,
+        showTranscriptionTab: Bool? = nil,
+        popoverSizeLocked: Bool? = nil,
+        showEditorToolbar: Bool? = nil,
+        userTags: [String]? = nil
     ) {
-        let s = SettingsService.shared.settings
-        let updated = AppSettings(
-            showInDock: showInDock ?? self.showInDock,
-            startOnBoot: startOnBoot ?? self.startOnBoot,
-            showWordCounter: showWordCounter ?? self.showWordCounter,
-            searchHotKey: searchHotKey ?? self.searchHotKey,
-            fullWindowHotKey: fullWindowHotKey ?? self.fullWindowHotKey,
-            hasCompletedOnboarding: s.hasCompletedOnboarding,
-            themeMode: themeMode ?? self.themeMode,
-            showSearchRecentNotes: showSearchRecentNotes ?? self.showSearchRecentNotes,
-            showTodoTab: showTodoTab ?? self.showTodoTab,
-            sidebarExpanded: s.sidebarExpanded
-        )
-        SettingsService.shared.updateSetting(updated)
+        var s = SettingsService.shared.settings
+        if let v = showInDock            { s.showInDock = v }
+        if let v = startOnBoot           { s.startOnBoot = v }
+        if let v = showWordCounter       { s.showWordCounter = v }
+        if let v = searchHotKey          { s.searchHotKey = v }
+        if let v = fullWindowHotKey      { s.fullWindowHotKey = v }
+        if let v = themeMode             { s.themeMode = v }
+        if let v = showSearchRecentNotes { s.showSearchRecentNotes = v }
+        if let v = showTodoTab           { s.showTodoTab = v }
+        if let v = showTranscriptionTab  { s.showTranscriptionTab = v }
+        if let v = popoverSizeLocked     { s.popoverSizeLocked = v }
+        if let v = showEditorToolbar     { s.showEditorToolbar = v }
+        if let v = userTags              { s.userTags = v }
+        SettingsService.shared.updateSetting(s)
         NotificationCenter.default.post(name: Notification.Name("SettingsChanged"), object: nil)
     }
 

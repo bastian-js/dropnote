@@ -16,17 +16,20 @@ struct EditorToolbar: View {
     var body: some View {
         HStack(spacing: 12) {
             Spacer(minLength: 0)
-            
+
             addNoteButton
-            deleteNoteButton
-            pinNoteButton
-            lockNoteButton
-            exportMenu
-            
+
+            if noteIndex < notes.count {
+                deleteNoteButton
+                pinNoteButton
+                lockNoteButton
+                exportMenu
+            }
+
             Spacer(minLength: 0)
-            
+
             savingStatus
-            
+
             Spacer(minLength: 0)
                 .frame(maxWidth: 8)
         }

@@ -13,53 +13,55 @@ struct NoteEditor: View {
     
     var body: some View {
         VStack(spacing: 0) {
-            if isNoteLocked {
-                lockedView
-            } else {
-                // Toolbar oben zentriert
-                HStack {
-                    Spacer()
-                    FormattingToolbar(
-                        onBoldTap: {
-                            applyBoldFormatting()
-                        },
-                        onItalicTap: {
-                            applyItalicFormatting()
-                        },
-                        onUnderlineTap: {
-                            applyUnderlineFormatting()
-                        },
-                        onUpdateFormats: { _, _, _ in }
-                    )
-                    Spacer()
-                }
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                
-                // Text Editor
-                RichTextEditor(
-                    text: $notes[noteIndex].text,
-                    attributedTextRTF: notes[noteIndex].attributedTextRTF,
-                    onTextChange: onSave,
-                    onAttributedChange: { rtfData in
-                        notes[noteIndex].attributedTextRTF = rtfData
-                        onSave()
-                    }
-                )
-                .padding(.horizontal, 12)
-                .padding(.vertical, 4)
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                
-                // Words Counter unten links
-                if showWordCounter {
+            if noteIndex < notes.count {
+                if isNoteLocked {
+                    lockedView
+                } else {
+                    // Toolbar oben zentriert
                     HStack {
-                        Text("Words: \(notes[noteIndex].text.split { $0.isWhitespace || $0.isNewline }.count)")
-                            .font(.footnote)
-                            .foregroundColor(.secondary)
+                        Spacer()
+                        FormattingToolbar(
+                            onBoldTap: {
+                                applyBoldFormatting()
+                            },
+                            onItalicTap: {
+                                applyItalicFormatting()
+                            },
+                            onUnderlineTap: {
+                                applyUnderlineFormatting()
+                            },
+                            onUpdateFormats: { _, _, _ in }
+                        )
                         Spacer()
                     }
                     .padding(.horizontal, 12)
-                    .padding(.bottom, 10)
+                    .padding(.vertical, 4)
+
+                    // Text Editor
+                    RichTextEditor(
+                        text: $notes[noteIndex].text,
+                        attributedTextRTF: notes[noteIndex].attributedTextRTF,
+                        onTextChange: onSave,
+                        onAttributedChange: { rtfData in
+                            notes[noteIndex].attributedTextRTF = rtfData
+                            onSave()
+                        }
+                    )
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 4)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+
+                    // Words Counter unten links
+                    if showWordCounter {
+                        HStack {
+                            Text("Words: \(notes[noteIndex].text.split { $0.isWhitespace || $0.isNewline }.count)")
+                                .font(.footnote)
+                                .foregroundColor(.secondary)
+                            Spacer()
+                        }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 10)
+                    }
                 }
             }
         }

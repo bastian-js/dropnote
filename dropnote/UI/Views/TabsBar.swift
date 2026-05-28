@@ -19,6 +19,14 @@ struct TabsBar: View {
     var onSelectTodoTab: (() -> Void)? = nil
     var onSelectNoteTab: (() -> Void)? = nil
 
+    // Transcription tab support
+    var showTranscriptionTab: Bool = false
+    var isTranscriptionTabSelected: Bool = false
+    var onSelectTranscriptionTab: (() -> Void)? = nil
+
+    // Float note action
+    var onRequestFloat: ((Int) -> Void)? = nil
+
     // Drag-to-reorder
     var onMove: ((Int, Int) -> Void)? = nil
     @State private var draggingIndex: Int?
@@ -26,6 +34,9 @@ struct TabsBar: View {
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 6) {
+                if showTranscriptionTab {
+                    transcriptionTabButton
+                }
                 if showTodoTab {
                     todoTabButton
                 }
@@ -62,14 +73,36 @@ struct TabsBar: View {
         .buttonStyle(.plain)
     }
 
+    // MARK: - Transcription Tab
+
+    @ViewBuilder
+    private var transcriptionTabButton: some View {
+        Button {
+            onSelectTranscriptionTab?()
+        } label: {
+            Image(systemName: "mic\(isTranscriptionTabSelected ? ".fill" : "")")
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundColor(isTranscriptionTabSelected ? .accentColor : .secondary)
+                .padding(.horizontal, 8)
+                .padding(.vertical, 6)
+                .background(isTranscriptionTabSelected ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
+                .cornerRadius(6)
+                .contentShape(RoundedRectangle(cornerRadius: 6))
+        }
+        .buttonStyle(.plain)
+        .help("Transcribe")
+    }
+
     // MARK: - Note Tabs
 
     @ViewBuilder
     private func tabItem(index: Int) -> some View {
-        if isEditingTabTitle && selectedTab == index {
-            editingTabTextField(index: index)
-        } else {
-            selectableTabButton(index: index)
+        if index < notes.count {
+            if isEditingTabTitle && selectedTab == index {
+                editingTabTextField(index: index)
+            } else {
+                selectableTabButton(index: index)
+            }
         }
     }
 
@@ -111,7 +144,7 @@ struct TabsBar: View {
         .frame(minWidth: 72, alignment: .leading)
         .padding(.horizontal, 8)
         .padding(.vertical, 6)
-        .background(!isTodoTabSelected && selectedTab == index ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
+        .background(!isTodoTabSelected && !isTranscriptionTabSelected && selectedTab == index ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
         .cornerRadius(6)
         .contentShape(RoundedRectangle(cornerRadius: 6))
         .fixedSize(horizontal: true, vertical: false)
@@ -133,6 +166,9 @@ struct TabsBar: View {
                 selectedTab = index
             }
             Button(notes[index].isLocked ? "Remove Lock" : "Lock") { onRequestToggleLock(index) }
+            Divider()
+            Button("Float Note") { onRequestFloat?(index) }
+            Divider()
             Button("Delete Note", role: .destructive) { onRequestDelete(index) }
         }
         .opacity(draggingIndex == index ? 0.45 : 1.0)

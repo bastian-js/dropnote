@@ -6,6 +6,10 @@
 	<string>AppIcon</string>
 
 	<key>LSApplicationCategoryType</key>
-<string>public.app-category.productivity</string>
+	<string>public.app-category.productivity</string>
+	<key>NSMicrophoneUsageDescription</key>
+	<string>DropNote uses the microphone to transcribe your voice into notes.</string>
+	<key>NSSpeechRecognitionUsageDescription</key>
+	<string>DropNote uses speech recognition to convert your voice to text.</string>
 </dict>
 </plist>

@@ -21,7 +21,7 @@ struct ContentView: View {
     @State private var isSearching: Bool = false
     @FocusState private var isSearchFieldFocused: Bool
 
-    @State private var showEditorToolbar: Bool = true
+    @State private var showEditorToolbar: Bool
     @State private var noteIDToOpen: UUID?
     @State private var showSettingsMenu: Bool = false
 
@@ -39,10 +39,15 @@ struct ContentView: View {
     @State private var showTodoTab: Bool
     @State private var showingTodoTab: Bool = false
 
+    // Transcription tab state
+    @State private var showTranscriptionTab: Bool
+    @State private var showingTranscriptionTab: Bool = false
+
+    @State private var popoverSize: CGSize
+    @State private var popoverSizeLocked: Bool
+
     @Environment(\.undoManager) private var undoManager
 
-    private let editorHeight: CGFloat = 200
-    private let toolbarHeight: CGFloat = 38
     private let notesService = NotesFileService.shared
     private let settingsService = SettingsService.shared
 
@@ -52,8 +57,12 @@ struct ContentView: View {
         _themeMode = State(initialValue: settings.themeMode)
         _showSearchRecentNotes = State(initialValue: settings.showSearchRecentNotes)
         _showTodoTab = State(initialValue: settings.showTodoTab)
+        _showTranscriptionTab = State(initialValue: settings.showTranscriptionTab)
         _notes = State(initialValue: [])
         _isLoadingNotes = State(initialValue: true)
+        _popoverSize = State(initialValue: CGSize(width: settings.popoverWidth, height: settings.popoverHeight))
+        _popoverSizeLocked = State(initialValue: settings.popoverSizeLocked)
+        _showEditorToolbar = State(initialValue: settings.showEditorToolbar)
     }
 
     var body: some View {
@@ -87,15 +96,27 @@ struct ContentView: View {
                 showSearchRecentNotes = s.showSearchRecentNotes
                 let newShowTodoTab = s.showTodoTab
                 showTodoTab = newShowTodoTab
-                if !newShowTodoTab && showingTodoTab {
-                    showingTodoTab = false
-                }
+                if !newShowTodoTab && showingTodoTab { showingTodoTab = false }
+                let newShowTranscriptionTab = s.showTranscriptionTab
+                showTranscriptionTab = newShowTranscriptionTab
+                if !newShowTranscriptionTab && showingTranscriptionTab { showingTranscriptionTab = false }
+                popoverSizeLocked = s.popoverSizeLocked
+                showEditorToolbar = s.showEditorToolbar
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PopoverSizeReset"))) { note in
+                if let size = note.object as? CGSize { popoverSize = size }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NotesWiped"))) { _ in
+                cachedFilteredIndices = []
+                notes = []
+                selectedTab = 0
             }
             .onChange(of: notes) { _, _ in recomputeFilteredIndices() }
             .onChange(of: searchText) { _, _ in recomputeFilteredIndices() }
             // Selecting a note tab deselects the todo tab
             .onChange(of: selectedTab) { _, _ in
                 if showingTodoTab { showingTodoTab = false }
+                if showingTranscriptionTab { showingTranscriptionTab = false }
             }
     }
 
@@ -106,62 +127,97 @@ struct ContentView: View {
         let currentFilteredIndices = cachedFilteredIndices
         let currentActiveIndex = activeIndex(from: currentFilteredIndices)
 
-        VStack(spacing: 6) {
-            searchBar
-            TabsBar(
-                notes: $notes,
-                filteredIndices: currentFilteredIndices,
-                selectedTab: $selectedTab,
-                isEditingTabTitle: $isEditingTabTitle,
-                editedTabTitle: $editedTabTitle,
-                isTextFieldFocused: $isTextFieldFocused,
-                onRequestDelete: { index in
-                    deleteIndex = index
-                    showDeleteAlert = true
-                },
-                onPersist: saveNotes,
-                onRequestTogglePin: { index in togglePin(noteIndex: index) },
-                onRequestToggleLock: { index in toggleLock(noteIndex: index) },
-                showTodoTab: showTodoTab,
-                isTodoTabSelected: showingTodoTab,
-                onSelectTodoTab: {
-                    withAnimation(.easeInOut(duration: 0.15)) { showingTodoTab = true }
-                },
-                onSelectNoteTab: {
-                    if showingTodoTab {
-                        withAnimation(.easeInOut(duration: 0.15)) { showingTodoTab = false }
-                    }
-                },
-                onMove: moveNote
-            )
-
-            noteArea(filteredIndices: currentFilteredIndices, activeIndex: currentActiveIndex)
-                .frame(maxHeight: .infinity)
-
-            if let current = currentActiveIndex, showEditorToolbar, !showingTodoTab {
-                EditorToolbar(
-                    noteIndex: current,
+        ZStack(alignment: .bottomTrailing) {
+            VStack(spacing: 6) {
+                searchBar
+                TabsBar(
                     notes: $notes,
+                    filteredIndices: currentFilteredIndices,
+                    selectedTab: $selectedTab,
+                    isEditingTabTitle: $isEditingTabTitle,
+                    editedTabTitle: $editedTabTitle,
+                    isTextFieldFocused: $isTextFieldFocused,
                     onRequestDelete: { index in
                         deleteIndex = index
                         showDeleteAlert = true
                     },
-                    onRequestAddNote: { addNote() },
+                    onPersist: saveNotes,
                     onRequestTogglePin: { index in togglePin(noteIndex: index) },
-                    onRequestToggleLock: toggleLock,
-                    onSave: scheduleSave
+                    onRequestToggleLock: { index in toggleLock(noteIndex: index) },
+                    showTodoTab: showTodoTab,
+                    isTodoTabSelected: showingTodoTab,
+                    onSelectTodoTab: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            showingTodoTab = true
+                            showingTranscriptionTab = false
+                        }
+                    },
+                    onSelectNoteTab: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            showingTodoTab = false
+                            showingTranscriptionTab = false
+                        }
+                    },
+                    showTranscriptionTab: showTranscriptionTab,
+                    isTranscriptionTabSelected: showingTranscriptionTab,
+                    onSelectTranscriptionTab: {
+                        withAnimation(.easeInOut(duration: 0.15)) {
+                            showingTranscriptionTab = true
+                            showingTodoTab = false
+                        }
+                    },
+                    onRequestFloat: { index in
+                        guard index < notes.count else { return }
+                        FloatingNoteWindowController.shared.show(note: notes[index])
+                    },
+                    onMove: moveNote
                 )
-                .padding(.horizontal, 10)
-                .padding(.bottom, 8)
+
+                noteArea(filteredIndices: currentFilteredIndices, activeIndex: currentActiveIndex)
+                    .frame(maxHeight: .infinity)
+
+                if let current = currentActiveIndex, showEditorToolbar, !showingTodoTab, !showingTranscriptionTab {
+                    EditorToolbar(
+                        noteIndex: current,
+                        notes: $notes,
+                        onRequestDelete: { index in
+                            deleteIndex = index
+                            showDeleteAlert = true
+                        },
+                        onRequestAddNote: { addNote() },
+                        onRequestTogglePin: { index in togglePin(noteIndex: index) },
+                        onRequestToggleLock: toggleLock,
+                        onSave: scheduleSave
+                    )
+                    .padding(.horizontal, 10)
+                    .padding(.bottom, 8)
+                }
+            }
+            .padding(.top, 8)
+            .frame(width: popoverSize.width, height: popoverSize.height)
+            .background(
+                Color.clear
+                    .contentShape(Rectangle())
+                    .onTapGesture { closeDropdownsAndEditing() }
+            )
+
+            if !popoverSizeLocked {
+                ResizeHandle(
+                    currentSize: popoverSize,
+                    onResize: { newSize in
+                        popoverSize = newSize
+                        AppDelegate.shared?.popover?.contentSize = newSize
+                    },
+                    onResizeEnd: { newSize in
+                        var s = settingsService.settings
+                        s.popoverWidth = newSize.width
+                        s.popoverHeight = newSize.height
+                        settingsService.updateSetting(s)
+                    }
+                )
+                .padding(2)
             }
         }
-        .padding(.top, 8)
-        .frame(width: 320, height: 480)
-        .background(
-            Color.clear
-                .contentShape(Rectangle())
-                .onTapGesture { closeDropdownsAndEditing() }
-        )
     }
 
     @ViewBuilder
@@ -223,6 +279,14 @@ struct ContentView: View {
             } else {
                 Spacer()
                 Button {
+                    addNote()
+                } label: {
+                    Image(systemName: "square.and.pencil").padding(6)
+                }
+                .buttonStyle(PlainButtonStyle())
+                .foregroundColor(.secondary)
+                .help("New Note")
+                Button {
                     withAnimation { isSearching = true }
                 } label: {
                     Image(systemName: "magnifyingglass").padding(6)
@@ -238,12 +302,20 @@ struct ContentView: View {
         if showingTodoTab {
             TodoListView(todos: $todoService.todos, hideCompleted: true, onSave: todoService.save)
                 .padding(.horizontal, 12)
+                .padding(.bottom, 10)
                 .transition(.opacity)
+        } else if showingTranscriptionTab {
+            TranscriptionView(onSaveAsNote: { text in
+                addNote(withText: text)
+            })
+            .padding(.horizontal, 12)
+            .padding(.bottom, 10)
+            .transition(.opacity)
         } else {
             Group {
                 if filteredIndices.isEmpty {
                     emptyState
-                } else if let current = activeIndex {
+                } else if let current = activeIndex, current < notes.count {
                     NoteEditor(
                         noteIndex: current,
                         notes: $notes,
@@ -455,18 +527,22 @@ struct ContentView: View {
     }
 
     private func addNote() {
-        // Cancel any pending debounced save so it can't overwrite with a stale snapshot.
+        addNote(withText: "")
+    }
+
+    private func addNote(withText text: String) {
         pendingSaveWorkItem?.cancel()
         pendingSaveWorkItem = nil
 
         let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? (notes.count + 1)
-        var newNote = Note(title: "Note \(nextNumber)", text: "")
+        var newNote = Note(title: "Note \(nextNumber)", text: text)
         newNote.updateModifiedDate()
 
         withAnimation(.easeInOut(duration: 0.2)) {
             notes.append(newNote)
             selectedTab = notes.count - 1
             showingTodoTab = false
+            showingTranscriptionTab = false
         }
         saveNotes()
         NoteSearchService.shared.indexNotes(with: notes)
