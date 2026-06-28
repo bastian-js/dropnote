@@ -97,19 +97,15 @@ Built with **SwiftUI** and **AppKit** — fast, lightweight, and local-first. Yo
 
 ## Installation
 
-### Option 1 — DMG *(recommended)*
+### Option 1 — App Store *(recommended)*
 
-1. Download **`DropNote-v2.8.dmg`** from [**Releases**](https://github.com/bastian-js/dropnote/releases)
-2. Open the DMG and drag **DropNote.app** into your **Applications** folder
-3. On first launch: right-click → **Open** to bypass Gatekeeper
+<a href="https://apps.apple.com/app/apple-store/id6761221463?pt=128642489&ct=GitHub&mt=8">
+  <img src="https://toolbox.marketingtools.apple.com/api/v2/badges/download-on-the-app-store/black/en-us" alt="Download on the App Store" height="44" />
+</a>
 
-### Option 2 — ZIP
+Get DropNote from the [**Mac App Store**](https://apps.apple.com/app/apple-store/id6761221463?pt=128642489&ct=GitHub&mt=8) — automatic updates, no Gatekeeper prompts.
 
-1. Download **`DropNote-v2.8.zip`** from [**Releases**](https://github.com/bastian-js/dropnote/releases)
-2. Unzip and move **DropNote.app** to your **Applications** folder
-3. On first launch: right-click → **Open** to bypass Gatekeeper
-
-### Option 3 — Build from Source
+### Option 2 — Build from Source
 
 ```bash
 git clone https://github.com/bastian-js/dropnote.git

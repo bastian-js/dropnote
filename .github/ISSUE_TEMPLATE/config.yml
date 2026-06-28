@@ -1,0 +1,8 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Website
+    url: https://dropnote.dev
+    about: Learn more about DropNote and download the latest version.
+  - name: Mac App Store
+    url: https://apps.apple.com/app/apple-store/id6761221463?pt=128642489&ct=GitHub&mt=8
+    about: Get DropNote with automatic updates from the App Store.

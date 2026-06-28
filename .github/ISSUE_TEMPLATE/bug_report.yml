@@ -1,0 +1,75 @@
+name: Bug Report
+description: Something isn't working as expected
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time to report a bug. The more detail you give, the faster it can be fixed.
+
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you start
+      options:
+        - label: I searched existing issues and this hasn't been reported yet
+          required: true
+        - label: I'm running the latest version of DropNote
+          required: true
+
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: A clear description of the bug and what you expected instead.
+      placeholder: When I do X, DropNote does Y — but I expected Z.
+    validations:
+      required: true
+
+  - type: textarea
+    id: steps
+    attributes:
+      label: Steps to reproduce
+      description: How can this be reproduced reliably?
+      placeholder: |
+        1. Open the menu bar popover
+        2. Create a note and ...
+        3. See the error
+    validations:
+      required: true
+
+  - type: dropdown
+    id: install
+    attributes:
+      label: How did you install DropNote?
+      options:
+        - Mac App Store
+        - Built from source
+    validations:
+      required: true
+
+  - type: input
+    id: app-version
+    attributes:
+      label: DropNote version
+      description: Find it in Settings → About.
+      placeholder: "2.8"
+    validations:
+      required: true
+
+  - type: input
+    id: macos-version
+    attributes:
+      label: macOS version
+      placeholder: "macOS 15.2 Sequoia"
+    validations:
+      required: true
+
+  - type: textarea
+    id: extra
+    attributes:
+      label: Screenshots or logs
+      description: Drag in any screenshots, recordings, or console output that help. Optional.
+    validations:
+      required: false
