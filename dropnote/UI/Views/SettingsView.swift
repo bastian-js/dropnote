@@ -41,6 +41,10 @@ struct SettingsView: View {
         }
     }
 
+    private var appVersion: String {
+        Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—"
+    }
+
     var body: some View {
         ZStack {
             LinearGradient(
@@ -107,7 +111,8 @@ struct SettingsView: View {
             }
             .padding(.trailing, 16)
         }
-        .frame(width: 560, height: 380)
+        .frame(minWidth: 680, idealWidth: 720, maxWidth: .infinity,
+               minHeight: 500, idealHeight: 540, maxHeight: .infinity)
         .appAccent()
         .preferredColorScheme(resolvedThemeColorScheme())
         .onAppear { reloadSettingsFromService() }
@@ -183,7 +188,7 @@ struct SettingsView: View {
 
                 toggleRow(
                     title: "Menu bar todo badge",
-                    subtitle: "Show a red dot on the menu bar icon when todos are open",
+                    subtitle: "Show a dot in your accent color on the menu bar icon when todos are open",
                     isOn: $showTodoBadge
                 ) { updateSetting(showTodoBadge: $0) }
             }
@@ -214,7 +219,7 @@ struct SettingsView: View {
                 )
             }
 
-            Text("Current version: 2.1")
+            Text("Current version: \(appVersion)")
                 .font(.footnote)
                 .foregroundColor(.secondary)
                 .padding(.top, 6)
@@ -416,6 +421,8 @@ struct SettingsView: View {
         performDeleteNotes()
         performDeleteTodos()
         performResetSettings()
+        // Clean slate → take the user back through onboarding.
+        NotificationCenter.default.post(name: Notification.Name("ShowOnboardingRequested"), object: nil)
     }
 
     @ViewBuilder
@@ -508,43 +515,122 @@ struct SettingsView: View {
             Text("About")
                 .font(.system(.title2, design: .rounded).weight(.semibold))
 
-            settingCard(title: "DropNote") {
-                VStack(alignment: .leading, spacing: 18) {
-                    HStack(spacing: 16) {
-                        RoundedRectangle(cornerRadius: 16)
-                            .fill(effectiveColorScheme == .dark ? Color.black.opacity(0.22) : Color.gray.opacity(0.15))
-                            .frame(width: 64, height: 64)
-                            .overlay(
-                                Image(systemName: "note.text")
-                                    .font(.system(size: 26, weight: .semibold))
+            // Hero card
+            VStack(spacing: 16) {
+                ZStack {
+                    RoundedRectangle(cornerRadius: 22)
+                        .fill(
+                            LinearGradient(
+                                colors: [Color.accentColor, Color.accentColor.opacity(0.7)],
+                                startPoint: .topLeading, endPoint: .bottomTrailing
                             )
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("DropNote")
-                                .font(.title3.weight(.semibold))
-                            Text("Version 2.1")
-                                .font(.callout)
-                                .foregroundColor(.secondary)
-                            Text("© 2026 bastian-js")
-                                .font(.footnote)
-                                .foregroundColor(.secondary)
-                        }
-                    }
-
-                    Text("Quick notes, clean focus, and instant search.")
-                        .font(.callout)
-                        .foregroundColor(.secondary)
-
-                    HStack(spacing: 10) {
-                        Label("Fast capture", systemImage: "bolt.fill")
-                        Label("Global search", systemImage: "magnifyingglass")
-                        Label("Secure notes", systemImage: "lock.fill")
-                    }
-                    .font(.footnote.weight(.semibold))
-                    .foregroundColor(.secondary)
+                        )
+                        .frame(width: 84, height: 84)
+                        .shadow(color: Color.accentColor.opacity(0.35), radius: 14, x: 0, y: 8)
+                    Image(systemName: "note.text")
+                        .font(.system(size: 38, weight: .semibold))
+                        .foregroundColor(.white)
                 }
-                .frame(maxWidth: .infinity, minHeight: 220, alignment: .topLeading)
+
+                VStack(spacing: 4) {
+                    Text("DropNote")
+                        .font(.system(.title, design: .rounded).weight(.bold))
+                    Text("Version \(appVersion)")
+                        .font(.callout.weight(.medium))
+                        .foregroundColor(.secondary)
+                    Text("Quick notes, clean focus, and instant search.")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .multilineTextAlignment(.center)
+                        .padding(.top, 2)
+                }
             }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, 22)
+            .background(
+                RoundedRectangle(cornerRadius: 16)
+                    .fill(effectiveColorScheme == .dark ? Color.black.opacity(0.15) : Color.gray.opacity(0.1))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 16)
+                            .stroke(effectiveColorScheme == .dark ? Color.white.opacity(0.06) : Color.gray.opacity(0.22), lineWidth: 1)
+                    )
+            )
+
+            // Links
+            settingCard(title: "Links") {
+                VStack(spacing: 2) {
+                    infoLinkRow(
+                        title: "Website",
+                        subtitle: "dropnote.dev",
+                        icon: "globe",
+                        url: "https://dropnote.dev"
+                    )
+                    Divider().padding(.vertical, 2)
+                    infoLinkRow(
+                        title: "GitHub",
+                        subtitle: "bastian-js/dropnote",
+                        icon: "chevron.left.forwardslash.chevron.right",
+                        url: "https://github.com/bastian-js/dropnote"
+                    )
+                    Divider().padding(.vertical, 2)
+                    infoLinkRow(
+                        title: "Report an issue",
+                        subtitle: "Found a bug? Let me know",
+                        icon: "ladybug",
+                        url: "https://github.com/bastian-js/dropnote/issues/new/choose"
+                    )
+                }
+            }
+
+            // Developer
+            settingCard(title: "Developer") {
+                infoLinkRow(
+                    title: "Made by bastian-js",
+                    subtitle: "bbastian.dev",
+                    icon: "person.crop.circle",
+                    url: "https://bbastian.dev"
+                )
+            }
+
+            Text("© 2026 bastian-js · All rights reserved")
+                .font(.footnote)
+                .foregroundColor(.secondary.opacity(0.7))
+                .frame(maxWidth: .infinity, alignment: .center)
+                .padding(.top, 2)
         }
+    }
+
+    @ViewBuilder
+    private func infoLinkRow(title: String, subtitle: String, icon: String, url: String) -> some View {
+        Button {
+            if let link = URL(string: url) { NSWorkspace.shared.open(link) }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.system(size: 15, weight: .semibold))
+                    .foregroundColor(.accentColor)
+                    .frame(width: 26, height: 26)
+                    .background(
+                        RoundedRectangle(cornerRadius: 7)
+                            .fill(Color.accentColor.opacity(0.12))
+                    )
+                VStack(alignment: .leading, spacing: 2) {
+                    Text(title)
+                        .font(.callout.weight(.semibold))
+                        .foregroundColor(.primary)
+                    Text(subtitle)
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                }
+                Spacer()
+                Image(systemName: "arrow.up.right")
+                    .font(.system(size: 11, weight: .bold))
+                    .foregroundColor(.secondary.opacity(0.6))
+            }
+            .padding(.vertical, 7)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Reusable Components

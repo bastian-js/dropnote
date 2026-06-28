@@ -7,8 +7,9 @@ struct OnboardingView: View {
     @State private var isCompletionInProgress = false
     @State private var eventMonitor: Any?
     @State private var todoTabEnabled: Bool = true
+    @State private var transcriptionTabEnabled: Bool = true
 
-    private let totalScreens = 4
+    private let totalScreens = 5
 
     var body: some View {
         ZStack {
@@ -41,9 +42,16 @@ struct OnboardingView: View {
                         )
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     } else if currentScreen == 3 {
+                        TranscriptionOnboardingScreen(
+                            transcriptionTabEnabled: $transcriptionTabEnabled,
+                            onContinue: { withAnimation(.easeInOut(duration: 0.4)) { currentScreen = 4 } },
+                            onBack:     { withAnimation(.easeInOut(duration: 0.4)) { currentScreen = 2 } }
+                        )
+                        .transition(.opacity.combined(with: .scale(scale: 0.95)))
+                    } else if currentScreen == 4 {
                         Screen3View(
                             onStartUsing: completeOnboarding,
-                            onBack: { withAnimation(.easeInOut(duration: 0.4)) { currentScreen = 2 } }
+                            onBack: { withAnimation(.easeInOut(duration: 0.4)) { currentScreen = 3 } }
                         )
                         .transition(.opacity.combined(with: .scale(scale: 0.95)))
                     }
@@ -77,6 +85,7 @@ struct OnboardingView: View {
             setupWindow()
             setupGlobalKeyMonitor()
             todoTabEnabled = SettingsService.shared.settings.showTodoTab
+            transcriptionTabEnabled = SettingsService.shared.settings.showTranscriptionTab
         }
     }
 
@@ -119,13 +128,13 @@ struct OnboardingView: View {
     private func handleReturn() {
         switch currentScreen {
         case 0: advanceToNextScreen()
-        case 1:
-            SearchWindowController.shared.show()
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                withAnimation(.easeInOut(duration: 0.4)) { currentScreen = 2 }
-            }
+        // Screen 1 (global search) used to open the real search window here, which
+        // stole focus and left the user stuck. Just advance — the screen already
+        // explains the shortcut.
+        case 1: advanceToNextScreen()
         case 2: advanceToNextScreen()
-        case 3: completeOnboarding()
+        case 3: advanceToNextScreen()
+        case 4: completeOnboarding()
         default: break
         }
     }
@@ -135,6 +144,7 @@ struct OnboardingView: View {
         var settings = SettingsService.shared.settings
         settings.hasCompletedOnboarding = true
         settings.showTodoTab = todoTabEnabled
+        settings.showTranscriptionTab = transcriptionTabEnabled
         SettingsService.shared.updateSetting(settings)
         NotificationCenter.default.post(name: Notification.Name("SettingsChanged"), object: nil)
 
@@ -468,7 +478,202 @@ struct TodoOnboardingScreen: View {
     }
 }
 
-// MARK: - Screen 4 (was Screen 3): Auto-Save
+// MARK: - Screen 4: Transcription
+
+struct TranscriptionOnboardingScreen: View {
+    @Binding var transcriptionTabEnabled: Bool
+    var onContinue: () -> Void
+    var onBack: () -> Void
+
+    var body: some View {
+        VStack(spacing: 0) {
+            Spacer()
+
+            VStack(spacing: 22) {
+                HStack(spacing: 14) {
+                    Image(systemName: "mic.fill")
+                        .font(.system(size: 30, weight: .semibold))
+                        .foregroundColor(.purple)
+                    Text("Transcription")
+                        .font(.system(size: 32, weight: .bold, design: .rounded))
+                }
+
+                Text("Speak and watch your words appear in real time.")
+                    .font(.system(size: 15, weight: .regular))
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+
+                DictationDemo()
+
+                // Language
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Preferred language")
+                        .font(.system(size: 13, weight: .semibold))
+                        .foregroundColor(.secondary)
+                    OnboardingLanguagePicker()
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+                // Toggle
+                HStack(spacing: 14) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Enable Transcription Tab")
+                            .font(.system(size: 15, weight: .semibold))
+                        Text("You can change this later in Settings.")
+                            .font(.system(size: 12))
+                            .foregroundColor(.secondary)
+                    }
+                    Spacer()
+                    Toggle("", isOn: $transcriptionTabEnabled)
+                        .labelsHidden()
+                        .toggleStyle(.switch)
+                }
+                .padding(14)
+                .background(
+                    RoundedRectangle(cornerRadius: 12)
+                        .fill(Color.gray.opacity(0.06))
+                        .strokeBorder(Color.gray.opacity(0.12), lineWidth: 1)
+                )
+            }
+
+            Spacer()
+
+            VStack(spacing: 12) {
+                Button(action: onContinue) {
+                    Text("Continue")
+                        .font(.system(size: 15, weight: .semibold))
+                        .frame(maxWidth: .infinity)
+                        .frame(height: 44)
+                        .background(RoundedRectangle(cornerRadius: 10).fill(Color.blue).shadow(color: .blue.opacity(0.3), radius: 8, x: 0, y: 4))
+                        .foregroundColor(.white)
+                }
+                .buttonStyle(.plain)
+                Button(action: onBack) {
+                    Text("Back")
+                        .font(.system(size: 15, weight: .semibold))
+                        .foregroundColor(.secondary)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+            }
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(36)
+    }
+}
+
+// MARK: - Dictation Demo (word-by-word reveal)
+
+private struct DictationDemo: View {
+    private let words = ["Meeting", "with", "Anna", "at", "7", "PM"]
+    @State private var revealed = 0
+    @State private var holdTicks = 0
+    @State private var pulse = false
+    @State private var timer: Timer?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            HStack(spacing: 8) {
+                Circle()
+                    .fill(Color.red)
+                    .frame(width: 9, height: 9)
+                    .scaleEffect(pulse ? 1.0 : 0.55)
+                    .opacity(pulse ? 1 : 0.45)
+                    .animation(.easeInOut(duration: 0.7).repeatForever(autoreverses: true), value: pulse)
+                Text("Listening…")
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.secondary)
+                Spacer()
+                Image(systemName: "waveform")
+                    .font(.system(size: 13, weight: .semibold))
+                    .foregroundColor(.purple)
+            }
+
+            HStack(spacing: 6) {
+                ForEach(Array(words.enumerated()), id: \.offset) { idx, word in
+                    if idx < revealed {
+                        Text(word)
+                            .font(.system(size: 17, weight: .medium))
+                            .transition(.asymmetric(
+                                insertion: .scale(scale: 0.4).combined(with: .opacity),
+                                removal: .opacity
+                            ))
+                    }
+                }
+                if revealed < words.count {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(Color.purple)
+                        .frame(width: 2, height: 19)
+                        .opacity(pulse ? 1 : 0.15)
+                }
+            }
+            .frame(maxWidth: .infinity, minHeight: 28, alignment: .leading)
+        }
+        .padding(16)
+        .background(
+            RoundedRectangle(cornerRadius: 12)
+                .fill(Color.gray.opacity(0.06))
+                .strokeBorder(Color.gray.opacity(0.15), lineWidth: 1)
+        )
+        .onAppear {
+            pulse = true
+            start()
+        }
+        .onDisappear { timer?.invalidate() }
+    }
+
+    private func start() {
+        timer?.invalidate()
+        timer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: true) { _ in
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.7)) {
+                if revealed < words.count {
+                    revealed += 1
+                } else if holdTicks < 3 {
+                    holdTicks += 1
+                } else {
+                    revealed = 0
+                    holdTicks = 0
+                }
+            }
+        }
+    }
+}
+
+// MARK: - Onboarding Language Picker
+
+private struct OnboardingLanguagePicker: View {
+    private let locales: [(id: String, label: String)] = [
+        ("de-DE", "DE"), ("en-US", "EN"), ("en-GB", "EN-GB"),
+        ("fr-FR", "FR"), ("es-ES", "ES"), ("it-IT", "IT")
+    ]
+    @State private var selected = TranscriptionService.shared.locale.identifier
+
+    var body: some View {
+        HStack(spacing: 6) {
+            ForEach(locales, id: \.id) { item in
+                Button {
+                    selected = item.id
+                    TranscriptionService.shared.setLocale(Locale(identifier: item.id))
+                } label: {
+                    Text(item.label)
+                        .font(.system(size: 12, weight: .semibold))
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(selected == item.id ? Color.purple : Color.gray.opacity(0.15))
+                        )
+                        .foregroundColor(selected == item.id ? .white : .primary)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+// MARK: - Screen 5 (was Screen 3): Auto-Save
 
 struct Screen3View: View {
     var onStartUsing: () -> Void

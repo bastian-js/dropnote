@@ -97,6 +97,19 @@ struct LinkPreviewStrip: View {
     }
 }
 
+/// Wraps the card with a trailing spacer so it stays flush-left inside a wider
+/// host frame (NSHostingView centers a bare compact view, which drifts it right).
+struct LinkPreviewSlot: View {
+    @ObservedObject var item: LinkPreviewItem
+
+    var body: some View {
+        HStack(spacing: 0) {
+            LinkPreviewCard(item: item)
+            Spacer(minLength: 0)
+        }
+    }
+}
+
 struct LinkPreviewCard: View {
     @ObservedObject var item: LinkPreviewItem
     @State private var isHovering = false

@@ -225,6 +225,13 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             object: nil
         )
 
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleShowOnboarding),
+            name: Notification.Name("ShowOnboardingRequested"),
+            object: nil
+        )
+
         let hotKey = SettingsService.shared.settings.searchHotKey
         HotKeyManager.shared.registerGlobalSearchHotKey(keyCode: hotKey.keyCode, modifiers: hotKey.modifiers)
 
@@ -234,6 +241,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         DispatchQueue.global(qos: .userInitiated).async {
             NoteSearchService.shared.indexNotes()
         }
+    }
+
+    @objc private func handleShowOnboarding() {
+        SettingsWindowController.shared.window?.close()
+        showOnboardingWindow()
     }
 
     @objc private func handleAppDidResignActive() {

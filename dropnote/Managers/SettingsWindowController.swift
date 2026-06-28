@@ -7,7 +7,7 @@ final class SettingsWindowController: NSWindowController {
 
     private init() {
         let window = NSWindow(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 380),
+            contentRect: NSRect(x: 0, y: 0, width: 720, height: 540),
             styleMask: [.titled, .closable, .resizable],
             backing: .buffered,
             defer: false
@@ -15,6 +15,7 @@ final class SettingsWindowController: NSWindowController {
 
         window.title = "Settings"
         window.isReleasedWhenClosed = false
+        window.minSize = NSSize(width: 680, height: 500)
         window.center()
         window.contentView = NSHostingView(rootView: SettingsView())
 

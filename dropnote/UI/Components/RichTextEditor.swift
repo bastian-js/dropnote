@@ -23,9 +23,12 @@ struct RichTextEditor: NSViewRepresentable {
         weak var textView: NSTextView?
         weak var previewContainer: NSView?
         var previewItems: [String: LinkPreviewItem] = [:]
-        var previewHosts: [String: NSHostingView<LinkPreviewCard>] = [:]
+        var previewHosts: [String: NSHostingView<LinkPreviewSlot>] = [:]
         private static let cardHeight: CGFloat = 40
         private static let cardWidth: CGFloat = 210
+        // Vertical gap reserved after a link's paragraph so the card doesn't sit on
+        // top of the text the user types next.
+        private static let reservedSpacing: CGFloat = 48
 
         init(_ parent: RichTextEditor) {
             self.parent = parent
@@ -67,15 +70,17 @@ struct RichTextEditor: NSViewRepresentable {
             updateLinkPreviews()
         }
 
-        /// Places a compact preview card directly below each link in the text.
+        /// Reserves space under each link's paragraph and places a flush-left preview
+        /// card in that gap.
         func updateLinkPreviews() {
             guard let textView,
                   let container = previewContainer,
                   let layoutManager = textView.layoutManager,
-                  let textContainer = textView.textContainer else { return }
+                  let textContainer = textView.textContainer,
+                  let storage = textView.textStorage else { return }
 
-            let text = textView.string
-            let matches = Self.detectLinkRanges(in: text)
+            let nsString = storage.string as NSString
+            let matches = Self.detectLinkRanges(in: storage.string)
             let activeKeys = Set(matches.map { $0.url.absoluteString })
 
             // Drop cards whose link no longer exists.
@@ -85,15 +90,20 @@ struct RichTextEditor: NSViewRepresentable {
                 previewItems[key] = nil
             }
 
+            // Reserve a gap below each paragraph that contains a link.
+            let linkParagraphs = matches.map { nsString.paragraphRange(for: $0.range) }
+            adjustParagraphSpacing(storage: storage, fullLength: nsString.length, linkParagraphs: linkParagraphs)
+
             layoutManager.ensureLayout(for: textContainer)
             let origin = textView.textContainerOrigin
+            // The text's true left edge: where every line fragment starts drawing.
+            let leftMargin = origin.x + textContainer.lineFragmentPadding
 
             for match in matches {
                 let key = match.url.absoluteString
                 let glyphRange = layoutManager.glyphRange(forCharacterRange: match.range, actualCharacterRange: nil)
-                var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
-                rect.origin.x += origin.x
-                rect.origin.y += origin.y
+                let rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+                let lineBottom = rect.maxY + origin.y
 
                 let item = previewItems[key] ?? {
                     let new = LinkPreviewItem(url: match.url)
@@ -101,20 +111,58 @@ struct RichTextEditor: NSViewRepresentable {
                     return new
                 }()
 
-                let host: NSHostingView<LinkPreviewCard>
+                let host: NSHostingView<LinkPreviewSlot>
                 if let existing = previewHosts[key] {
                     host = existing
                 } else {
-                    host = NSHostingView(rootView: LinkPreviewCard(item: item))
+                    host = NSHostingView(rootView: LinkPreviewSlot(item: item))
                     host.translatesAutoresizingMaskIntoConstraints = true
+                    if #available(macOS 13.3, *) { host.safeAreaRegions = [] }
                     container.addSubview(host)
                     previewHosts[key] = host
                 }
 
-                let maxWidth = max(120, container.bounds.width - rect.minX - 8)
+                let maxWidth = max(120, container.bounds.width - leftMargin - 8)
                 let width = min(Self.cardWidth, maxWidth)
-                host.frame = NSRect(x: rect.minX, y: rect.maxY + 2, width: width, height: Self.cardHeight)
+                host.frame = NSRect(x: leftMargin, y: lineBottom + 4, width: width, height: Self.cardHeight)
             }
+        }
+
+        /// Adds `reservedSpacing` after link paragraphs and clears it elsewhere.
+        /// Only mutates when a value actually differs, so it can't loop via layout.
+        private func adjustParagraphSpacing(storage: NSTextStorage, fullLength: Int, linkParagraphs: [NSRange]) {
+            guard fullLength > 0 else { return }
+            var changes: [(NSRange, CGFloat)] = []
+
+            storage.enumerateAttribute(.paragraphStyle, in: NSRange(location: 0, length: fullLength), options: []) { value, range, _ in
+                let isLink = linkParagraphs.contains { NSIntersectionRange($0, range).length > 0 }
+                let current = (value as? NSParagraphStyle)?.paragraphSpacing ?? 0
+                if isLink && current != Self.reservedSpacing {
+                    changes.append((range, Self.reservedSpacing))
+                } else if !isLink && current == Self.reservedSpacing {
+                    changes.append((range, 0))
+                }
+            }
+            // Paragraphs with no paragraphStyle attribute at all still need the gap.
+            for para in linkParagraphs where para.length >= 0 {
+                let existing = para.location < fullLength
+                    ? storage.attribute(.paragraphStyle, at: para.location, effectiveRange: nil) as? NSParagraphStyle
+                    : nil
+                if (existing?.paragraphSpacing ?? 0) != Self.reservedSpacing {
+                    changes.append((para, Self.reservedSpacing))
+                }
+            }
+
+            guard !changes.isEmpty else { return }
+            storage.beginEditing()
+            for (range, spacing) in changes {
+                guard range.location < fullLength else { continue }
+                let base = (storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle) ?? .default
+                let mutable = (base.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
+                mutable.paragraphSpacing = spacing
+                storage.addAttribute(.paragraphStyle, value: mutable, range: range)
+            }
+            storage.endEditing()
         }
 
         static func detectLinkRanges(in text: String) -> [(url: URL, range: NSRange)] {

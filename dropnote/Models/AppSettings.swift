@@ -40,6 +40,8 @@ struct AppSettings: Codable {
     var accentColorHex: String = ""
     /// Show a red badge on the menu bar icon when todos are open.
     var showTodoBadge: Bool = true
+    /// Preferred speech-to-text language (locale identifier, e.g. "de-DE").
+    var transcriptionLocale: String = "de-DE"
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -61,6 +63,7 @@ struct AppSettings: Codable {
         showEditorToolbar      = try c.decodeIfPresent(Bool.self,           forKey: .showEditorToolbar)      ?? true
         accentColorHex         = try c.decodeIfPresent(String.self,         forKey: .accentColorHex)         ?? ""
         showTodoBadge          = try c.decodeIfPresent(Bool.self,           forKey: .showTodoBadge)          ?? true
+        transcriptionLocale    = try c.decodeIfPresent(String.self,         forKey: .transcriptionLocale)    ?? "de-DE"
     }
 
     init(
@@ -81,7 +84,8 @@ struct AppSettings: Codable {
         popoverSizeLocked: Bool = false,
         showEditorToolbar: Bool = true,
         accentColorHex: String = "",
-        showTodoBadge: Bool = true
+        showTodoBadge: Bool = true,
+        transcriptionLocale: String = "de-DE"
     ) {
         self.showInDock = showInDock
         self.startOnBoot = startOnBoot
@@ -101,5 +105,6 @@ struct AppSettings: Codable {
         self.showEditorToolbar = showEditorToolbar
         self.accentColorHex = accentColorHex
         self.showTodoBadge = showTodoBadge
+        self.transcriptionLocale = transcriptionLocale
     }
 }

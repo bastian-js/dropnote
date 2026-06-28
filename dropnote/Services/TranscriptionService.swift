@@ -27,7 +27,9 @@ final class TranscriptionService: ObservableObject {
 
     private init() {
         permissionStatus = SFSpeechRecognizer.authorizationStatus()
-        speechRecognizer = SFSpeechRecognizer(locale: Locale(identifier: "de-DE"))
+        let saved = SettingsService.shared.settings.transcriptionLocale
+        locale = Locale(identifier: saved)
+        speechRecognizer = SFSpeechRecognizer(locale: locale)
             ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
     }
 
@@ -36,9 +38,17 @@ final class TranscriptionService: ObservableObject {
         locale = newLocale
         speechRecognizer = SFSpeechRecognizer(locale: newLocale)
             ?? SFSpeechRecognizer(locale: Locale(identifier: "en-US"))
+        persistLocale(newLocale.identifier)
         if isRecording {
             stopRecording()
         }
+    }
+
+    private func persistLocale(_ identifier: String) {
+        var settings = SettingsService.shared.settings
+        guard settings.transcriptionLocale != identifier else { return }
+        settings.transcriptionLocale = identifier
+        SettingsService.shared.updateSetting(settings)
     }
 
     func requestSpeechPermission(completion: @escaping () -> Void) {
