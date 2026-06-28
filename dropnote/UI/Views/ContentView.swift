@@ -46,6 +46,9 @@ struct ContentView: View {
     @State private var popoverSize: CGSize
     @State private var popoverSizeLocked: Bool
 
+    // Self-destruct custom date sheet
+    @State private var expiryNoteID: UUID?
+
     @Environment(\.undoManager) private var undoManager
 
     private let notesService = NotesFileService.shared
@@ -67,6 +70,7 @@ struct ContentView: View {
 
     var body: some View {
         mainContent
+            .appAccent()
             .preferredColorScheme(getColorScheme())
             .onAppear {
                 loadNotesIfNeeded()
@@ -110,6 +114,25 @@ struct ContentView: View {
                 cachedFilteredIndices = []
                 notes = []
                 selectedTab = 0
+            }
+            .onReceive(NotificationCenter.default.publisher(for: ExpiryManager.notesReloadRequested)) { _ in
+                reloadNotesFromDisk()
+            }
+            .sheet(isPresented: Binding(
+                get: { expiryNoteID != nil },
+                set: { if !$0 { expiryNoteID = nil } }
+            )) {
+                if let id = expiryNoteID, let idx = notes.firstIndex(where: { $0.id == id }) {
+                    ExpiryPickerView(
+                        noteTitle: notes[idx].title,
+                        initialDate: notes[idx].expiryDate,
+                        onSet: { date in
+                            setExpiry(noteIndex: idx, date: date)
+                            expiryNoteID = nil
+                        },
+                        onCancel: { expiryNoteID = nil }
+                    )
+                }
             }
             .onChange(of: notes) { _, _ in recomputeFilteredIndices() }
             .onChange(of: searchText) { _, _ in recomputeFilteredIndices() }
@@ -169,6 +192,11 @@ struct ContentView: View {
                     onRequestFloat: { index in
                         guard index < notes.count else { return }
                         FloatingNoteWindowController.shared.show(note: notes[index])
+                    },
+                    onSetExpiry: { index, date in setExpiry(noteIndex: index, date: date) },
+                    onRequestCustomExpiry: { index in
+                        guard index < notes.count else { return }
+                        expiryNoteID = notes[index].id
                     },
                     onMove: moveNote
                 )
@@ -493,6 +521,7 @@ struct ContentView: View {
         let currentFilteredIndices = cachedFilteredIndices
         if let current = activeIndex(from: currentFilteredIndices) {
             notes[current].updateModifiedDate()
+            notes[current].captureVersionIfNeeded()
         }
 
         let notesSnapshot = notes
@@ -546,6 +575,26 @@ struct ContentView: View {
         }
         saveNotes()
         NoteSearchService.shared.indexNotes(with: notes)
+    }
+
+    private func setExpiry(noteIndex: Int, date: Date?) {
+        guard noteIndex < notes.count else { return }
+        notes[noteIndex].expiryDate = date
+        scheduleSave()
+    }
+
+    private func reloadNotesFromDisk() {
+        guard let loaded = notesService.loadNotes() else { return }
+        let selectedID = activeIndex(from: cachedFilteredIndices).flatMap { idx -> UUID? in
+            idx < notes.count ? notes[idx].id : nil
+        }
+        notes = loaded
+        if let selectedID, let newIndex = loaded.firstIndex(where: { $0.id == selectedID }) {
+            selectedTab = newIndex
+        } else {
+            selectedTab = max(0, min(selectedTab, loaded.count - 1))
+        }
+        recomputeFilteredIndices()
     }
 
     private func togglePin(noteIndex: Int) {

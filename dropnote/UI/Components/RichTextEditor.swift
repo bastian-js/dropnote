@@ -18,19 +18,36 @@ struct RichTextEditor: NSViewRepresentable {
         var parent: RichTextEditor
         var lastLoadedRTF: Data?
         var isProgrammaticUpdate = false
-        
+
+        // Inline link previews
+        weak var textView: NSTextView?
+        weak var previewContainer: NSView?
+        var previewItems: [String: LinkPreviewItem] = [:]
+        var previewHosts: [String: NSHostingView<LinkPreviewCard>] = [:]
+        private static let cardHeight: CGFloat = 40
+        private static let cardWidth: CGFloat = 210
+
         init(_ parent: RichTextEditor) {
             self.parent = parent
         }
-        
+
+        deinit {
+            NotificationCenter.default.removeObserver(self)
+        }
+
         func textDidChange(_ notification: Notification) {
             if isProgrammaticUpdate {
                 return
             }
 
             if let textView = notification.object as? NSTextView {
+                // Inline markdown: turn **text** into real formatting as you type.
+                isProgrammaticUpdate = true
+                applyInlineMarkdown(textView)
+                isProgrammaticUpdate = false
+
                 parent.text = textView.string
-                
+
                 // Save attributed text as RTF
                 if let rtfData = try? textView.attributedString().data(
                     from: NSRange(location: 0, length: textView.attributedString().length),
@@ -38,9 +55,125 @@ struct RichTextEditor: NSViewRepresentable {
                 ) {
                     parent.onAttributedChange(rtfData)
                 }
-                
+
                 parent.onTextChange()
+                updateLinkPreviews()
             }
+        }
+
+        // MARK: - Inline Link Previews
+
+        @objc func layoutChanged() {
+            updateLinkPreviews()
+        }
+
+        /// Places a compact preview card directly below each link in the text.
+        func updateLinkPreviews() {
+            guard let textView,
+                  let container = previewContainer,
+                  let layoutManager = textView.layoutManager,
+                  let textContainer = textView.textContainer else { return }
+
+            let text = textView.string
+            let matches = Self.detectLinkRanges(in: text)
+            let activeKeys = Set(matches.map { $0.url.absoluteString })
+
+            // Drop cards whose link no longer exists.
+            for (key, host) in previewHosts where !activeKeys.contains(key) {
+                host.removeFromSuperview()
+                previewHosts[key] = nil
+                previewItems[key] = nil
+            }
+
+            layoutManager.ensureLayout(for: textContainer)
+            let origin = textView.textContainerOrigin
+
+            for match in matches {
+                let key = match.url.absoluteString
+                let glyphRange = layoutManager.glyphRange(forCharacterRange: match.range, actualCharacterRange: nil)
+                var rect = layoutManager.boundingRect(forGlyphRange: glyphRange, in: textContainer)
+                rect.origin.x += origin.x
+                rect.origin.y += origin.y
+
+                let item = previewItems[key] ?? {
+                    let new = LinkPreviewItem(url: match.url)
+                    previewItems[key] = new
+                    return new
+                }()
+
+                let host: NSHostingView<LinkPreviewCard>
+                if let existing = previewHosts[key] {
+                    host = existing
+                } else {
+                    host = NSHostingView(rootView: LinkPreviewCard(item: item))
+                    host.translatesAutoresizingMaskIntoConstraints = true
+                    container.addSubview(host)
+                    previewHosts[key] = host
+                }
+
+                let maxWidth = max(120, container.bounds.width - rect.minX - 8)
+                let width = min(Self.cardWidth, maxWidth)
+                host.frame = NSRect(x: rect.minX, y: rect.maxY + 2, width: width, height: Self.cardHeight)
+            }
+        }
+
+        static func detectLinkRanges(in text: String) -> [(url: URL, range: NSRange)] {
+            guard !text.isEmpty,
+                  let detector = try? NSDataDetector(types: NSTextCheckingResult.CheckingType.link.rawValue) else { return [] }
+            let ns = text as NSString
+            let matches = detector.matches(in: text, range: NSRange(location: 0, length: ns.length))
+            var seen = Set<String>()
+            var result: [(URL, NSRange)] = []
+            for match in matches {
+                guard let url = match.url, url.scheme?.hasPrefix("http") == true,
+                      !seen.contains(url.absoluteString) else { continue }
+                seen.insert(url.absoluteString)
+                result.append((url, match.range))
+            }
+            return result
+        }
+
+        /// Detects a just-completed `**bold**` marker ending at the caret and replaces
+        /// it with bold text, stripping the asterisks. Notion-style, no mode switching.
+        /// Restricted to `**` so stray single asterisks (e.g. "2 * 3") are left alone.
+        private func applyInlineMarkdown(_ textView: NSTextView) {
+            guard let storage = textView.textStorage else { return }
+            let caret = textView.selectedRange().location
+            guard caret > 1 else { return }
+            let ns = storage.string as NSString
+            guard caret <= ns.length else { return }
+            // Only act right after an asterisk was typed.
+            guard ns.substring(with: NSRange(location: caret - 1, length: 1)) == "*" else { return }
+
+            let prefix = ns.substring(to: caret)
+
+            guard let regex = try? NSRegularExpression(pattern: "\\*\\*([^*\\n]+)\\*\\*$") else { return }
+            let range = NSRange(location: 0, length: (prefix as NSString).length)
+            guard let match = regex.firstMatch(in: prefix, options: [], range: range) else { return }
+
+            let fullRange = match.range
+            let inner = (prefix as NSString).substring(with: match.range(at: 1))
+
+            let baseFont = (textView.typingAttributes[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 15)
+            let traited = baseFont.fontDescriptor.symbolicTraits.union(.bold)
+            let newFont = NSFont(descriptor: baseFont.fontDescriptor.withSymbolicTraits(traited), size: baseFont.pointSize) ?? baseFont
+
+            var attrs = textView.typingAttributes
+            attrs[.font] = newFont
+            let replacement = NSAttributedString(string: inner, attributes: attrs)
+
+            guard textView.shouldChangeText(in: fullRange, replacementString: inner) else { return }
+            storage.replaceCharacters(in: fullRange, with: replacement)
+
+            let newCaret = fullRange.location + (inner as NSString).length
+            textView.setSelectedRange(NSRange(location: newCaret, length: 0))
+
+            // Reset typing attributes so text typed after the marker isn't bold.
+            var reset = textView.typingAttributes
+            reset[.font] = baseFont
+            textView.typingAttributes = reset
+
+            textView.didChangeText()
         }
     }
     
@@ -55,7 +188,25 @@ struct RichTextEditor: NSViewRepresentable {
 
         scrollView.documentView = textView
 
+        // Overlay that hosts inline link-preview cards. It lives inside the text view
+        // so it scrolls with the text; hit-testing passes through except on the cards.
+        let container = LinkPreviewOverlayView()
+        container.frame = textView.bounds
+        container.autoresizingMask = [.width, .height]
+        textView.addSubview(container)
+        context.coordinator.textView = textView
+        context.coordinator.previewContainer = container
+
+        textView.postsFrameChangedNotifications = true
+        NotificationCenter.default.addObserver(
+            context.coordinator,
+            selector: #selector(Coordinator.layoutChanged),
+            name: NSView.frameDidChangeNotification,
+            object: textView
+        )
+
         loadAttributedText(textView, context: context)
+        DispatchQueue.main.async { context.coordinator.updateLinkPreviews() }
         return scrollView
     }
 
@@ -72,8 +223,9 @@ struct RichTextEditor: NSViewRepresentable {
         
         context.coordinator.lastLoadedRTF = attributedTextRTF
         updateTextViewContent(textView, context: context)
+        DispatchQueue.main.async { context.coordinator.updateLinkPreviews() }
     }
-    
+
     // MARK: - Private Methods
     
     private func createScrollView() -> NSScrollView {
@@ -245,5 +397,19 @@ private final class DropNoteTextView: NSTextView {
         textStorage?.replaceCharacters(in: range, with: insertion)
         setSelectedRange(NSRange(location: range.location + (plain as NSString).length, length: 0))
         didChangeText()
+    }
+}
+
+// MARK: - LinkPreviewOverlayView
+
+/// Flipped overlay (so it shares the text view's top-left coordinate system) that
+/// hosts inline preview cards. Clicks pass straight through to the text view unless
+/// they land on a card.
+private final class LinkPreviewOverlayView: NSView {
+    override var isFlipped: Bool { true }
+
+    override func hitTest(_ point: NSPoint) -> NSView? {
+        let hit = super.hitTest(point)
+        return hit === self ? nil : hit
     }
 }

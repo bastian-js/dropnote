@@ -21,6 +21,8 @@ struct SettingsView: View {
     @State private var fullWindowHotKeyMonitor: Any?
     @State private var popoverSizeLocked = SettingsService.shared.settings.popoverSizeLocked
     @State private var showEditorToolbar = SettingsService.shared.settings.showEditorToolbar
+    @State private var accentColorHex = SettingsService.shared.settings.accentColorHex
+    @State private var showTodoBadge = SettingsService.shared.settings.showTodoBadge
     @State private var userTags: [String] = SettingsService.shared.settings.userTags
     @State private var newTagInput: String = ""
     @State private var selectedSection: String? = "General"
@@ -106,6 +108,7 @@ struct SettingsView: View {
             .padding(.trailing, 16)
         }
         .frame(width: 560, height: 380)
+        .appAccent()
         .preferredColorScheme(resolvedThemeColorScheme())
         .onAppear { reloadSettingsFromService() }
         .alert(item: $dangerAlert) { alert in
@@ -175,6 +178,14 @@ struct SettingsView: View {
                     subtitle: "Show a mic tab to transcribe speech into text",
                     isOn: $showTranscriptionTab
                 ) { updateSetting(showTranscriptionTab: $0) }
+
+                Divider().padding(.vertical, 4)
+
+                toggleRow(
+                    title: "Menu bar todo badge",
+                    subtitle: "Show a red dot on the menu bar icon when todos are open",
+                    isOn: $showTodoBadge
+                ) { updateSetting(showTodoBadge: $0) }
             }
 
             settingCard(title: "Tags") {
@@ -225,6 +236,10 @@ struct SettingsView: View {
                         themeModeButton("Light", value: "light")
                         themeModeButton("Dark", value: "dark")
                     }
+
+                    Divider().padding(.vertical, 2)
+
+                    accentColorPicker
                 }
             }
 
@@ -401,6 +416,71 @@ struct SettingsView: View {
         performDeleteNotes()
         performDeleteTodos()
         performResetSettings()
+    }
+
+    @ViewBuilder
+    private var accentColorPicker: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text("Accent color")
+                    .font(.callout.weight(.semibold))
+                Spacer()
+                if !accentColorHex.isEmpty {
+                    Button("Reset") { setAccent("") }
+                        .font(.system(size: 11, weight: .semibold))
+                        .buttonStyle(.plain)
+                        .foregroundColor(.secondary)
+                }
+            }
+
+            HStack(spacing: 8) {
+                // System default swatch
+                accentSwatch(hex: "", isSystem: true)
+
+                ForEach(AppTheme.palette, id: \.self) { hex in
+                    accentSwatch(hex: hex, isSystem: false)
+                }
+
+                Spacer(minLength: 0)
+
+                ColorPicker("", selection: Binding(
+                    get: { Color(hex: accentColorHex) ?? .accentColor },
+                    set: { setAccent($0.hexString) }
+                ), supportsOpacity: false)
+                .labelsHidden()
+                .help("Custom color")
+            }
+        }
+    }
+
+    @ViewBuilder
+    private func accentSwatch(hex: String, isSystem: Bool) -> some View {
+        let isSelected = accentColorHex.caseInsensitiveCompare(hex) == .orderedSame
+        Button {
+            setAccent(hex)
+        } label: {
+            ZStack {
+                Circle()
+                    .fill(isSystem ? Color.accentColor : (Color(hex: hex) ?? .gray))
+                    .frame(width: 20, height: 20)
+                if isSystem {
+                    Image(systemName: "a.circle")
+                        .font(.system(size: 10, weight: .bold))
+                        .foregroundColor(.white.opacity(0.9))
+                }
+                Circle()
+                    .stroke(Color.primary.opacity(isSelected ? 0.9 : 0.12), lineWidth: isSelected ? 2 : 1)
+                    .frame(width: 24, height: 24)
+            }
+            .frame(width: 26, height: 26)
+        }
+        .buttonStyle(.plain)
+        .help(isSystem ? "System" : hex)
+    }
+
+    private func setAccent(_ hex: String) {
+        accentColorHex = hex
+        updateSetting(accentColorHex: hex)
     }
 
     @ViewBuilder
@@ -660,6 +740,8 @@ struct SettingsView: View {
         popoverSizeLocked = s.popoverSizeLocked
         showEditorToolbar = s.showEditorToolbar
         userTags = s.userTags
+        accentColorHex = s.accentColorHex
+        showTodoBadge = s.showTodoBadge
     }
 
     private func updateSetting(
@@ -674,7 +756,9 @@ struct SettingsView: View {
         showTranscriptionTab: Bool? = nil,
         popoverSizeLocked: Bool? = nil,
         showEditorToolbar: Bool? = nil,
-        userTags: [String]? = nil
+        userTags: [String]? = nil,
+        accentColorHex: String? = nil,
+        showTodoBadge: Bool? = nil
     ) {
         var s = SettingsService.shared.settings
         if let v = showInDock            { s.showInDock = v }
@@ -689,6 +773,8 @@ struct SettingsView: View {
         if let v = popoverSizeLocked     { s.popoverSizeLocked = v }
         if let v = showEditorToolbar     { s.showEditorToolbar = v }
         if let v = userTags              { s.userTags = v }
+        if let v = accentColorHex        { s.accentColorHex = v }
+        if let v = showTodoBadge         { s.showTodoBadge = v }
         SettingsService.shared.updateSetting(s)
         NotificationCenter.default.post(name: Notification.Name("SettingsChanged"), object: nil)
     }

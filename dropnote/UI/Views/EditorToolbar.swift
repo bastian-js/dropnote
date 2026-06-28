@@ -10,9 +10,9 @@ struct EditorToolbar: View {
     var onRequestTogglePin: (Int) -> Void
     var onRequestToggleLock: (Int) -> Void
     var onSave: () -> Void
-    
-    @State private var isSaving: Bool = false
-    
+
+    @State private var showHistory: Bool = false
+
     var body: some View {
         HStack(spacing: 12) {
             Spacer(minLength: 0)
@@ -23,16 +23,13 @@ struct EditorToolbar: View {
                 deleteNoteButton
                 pinNoteButton
                 lockNoteButton
+                historyButton
                 exportMenu
             }
 
             Spacer(minLength: 0)
-
-            savingStatus
-
-            Spacer(minLength: 0)
-                .frame(maxWidth: 8)
         }
+        .tint(.secondary)
         .frame(maxWidth: .infinity, minHeight: 38, maxHeight: 38)
         .background(.ultraThinMaterial)
         .clipShape(RoundedRectangle(cornerRadius: 12))
@@ -115,18 +112,23 @@ struct EditorToolbar: View {
     }
     
     @ViewBuilder
-    private var savingStatus: some View {
-        if isSaving {
-            Text("Saving...")
-                .font(.system(size: 12, weight: .regular))
+    private var historyButton: some View {
+        Button {
+            showHistory.toggle()
+        } label: {
+            Image(systemName: "clock.arrow.circlepath")
+                .font(.system(size: 15, weight: .regular))
                 .foregroundColor(.secondary)
-        } else {
-            Text("Saved")
-                .font(.system(size: 12, weight: .regular))
-                .foregroundColor(.secondary)
+                .frame(width: 24, height: 24)
+        }
+        .buttonStyle(BorderlessButtonStyle())
+        .help("Version history")
+        .popover(isPresented: $showHistory, arrowEdge: .top) {
+            NoteHistoryView(note: $notes[noteIndex], onRestore: onSave)
         }
     }
-    
+
+
     @ViewBuilder
     private func toolbarButton(icon: String, tooltip: String, action: @escaping () -> Void) -> some View {
         Button(action: action) {

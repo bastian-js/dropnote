@@ -36,6 +36,10 @@ struct AppSettings: Codable {
     var popoverHeight: Double = 480
     var popoverSizeLocked: Bool = false
     var showEditorToolbar: Bool = true
+    /// Hex string (e.g. "#0A84FF") for the user's custom accent color. Empty = system default.
+    var accentColorHex: String = ""
+    /// Show a red badge on the menu bar icon when todos are open.
+    var showTodoBadge: Bool = true
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -55,6 +59,8 @@ struct AppSettings: Codable {
         popoverHeight          = try c.decodeIfPresent(Double.self,         forKey: .popoverHeight)          ?? 480
         popoverSizeLocked      = try c.decodeIfPresent(Bool.self,           forKey: .popoverSizeLocked)      ?? false
         showEditorToolbar      = try c.decodeIfPresent(Bool.self,           forKey: .showEditorToolbar)      ?? true
+        accentColorHex         = try c.decodeIfPresent(String.self,         forKey: .accentColorHex)         ?? ""
+        showTodoBadge          = try c.decodeIfPresent(Bool.self,           forKey: .showTodoBadge)          ?? true
     }
 
     init(
@@ -73,7 +79,9 @@ struct AppSettings: Codable {
         popoverWidth: Double = 320,
         popoverHeight: Double = 480,
         popoverSizeLocked: Bool = false,
-        showEditorToolbar: Bool = true
+        showEditorToolbar: Bool = true,
+        accentColorHex: String = "",
+        showTodoBadge: Bool = true
     ) {
         self.showInDock = showInDock
         self.startOnBoot = startOnBoot
@@ -91,5 +99,7 @@ struct AppSettings: Codable {
         self.popoverHeight = popoverHeight
         self.popoverSizeLocked = popoverSizeLocked
         self.showEditorToolbar = showEditorToolbar
+        self.accentColorHex = accentColorHex
+        self.showTodoBadge = showTodoBadge
     }
 }

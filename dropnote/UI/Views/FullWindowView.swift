@@ -24,6 +24,7 @@ struct FullWindowView: View {
     @State private var showDeleteAlert = false
     @State private var pendingDeleteId: UUID? = nil
     @State private var pendingSaveWorkItem: DispatchWorkItem?
+    @State private var expiryNoteID: UUID?
 
     private let notesService = NotesFileService.shared
 
@@ -83,7 +84,14 @@ struct FullWindowView: View {
                         }
                         persistSidebar(false)
                     },
-                    onMoveNote: moveNote
+                    onMoveNote: moveNote,
+                    onFloatNote: { id in
+                        if let note = notes.first(where: { $0.id == id }) {
+                            FloatingNoteWindowController.shared.show(note: note)
+                        }
+                    },
+                    onSetExpiry: { id, date in setExpiry(noteId: id, date: date) },
+                    onRequestCustomExpiry: { id in expiryNoteID = id }
                 )
                 .frame(width: 240)
                 .transition(.move(edge: .leading).combined(with: .opacity))
@@ -103,6 +111,7 @@ struct FullWindowView: View {
         }
         } // ZStack
         .frame(minWidth: 760, minHeight: 520)
+        .appAccent()
         .preferredColorScheme(resolvedColorScheme())
         .alert("Delete note?", isPresented: $showDeleteAlert) {
             Button("Delete", role: .destructive) {
@@ -120,6 +129,25 @@ struct FullWindowView: View {
         }
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NewNoteRequested"))) { _ in
             addNote()
+        }
+        .onReceive(NotificationCenter.default.publisher(for: ExpiryManager.notesReloadRequested)) { _ in
+            reloadNotesFromDisk()
+        }
+        .sheet(isPresented: Binding(
+            get: { expiryNoteID != nil },
+            set: { if !$0 { expiryNoteID = nil } }
+        )) {
+            if let id = expiryNoteID, let idx = notes.firstIndex(where: { $0.id == id }) {
+                ExpiryPickerView(
+                    noteTitle: notes[idx].title,
+                    initialDate: notes[idx].expiryDate,
+                    onSet: { date in
+                        setExpiry(noteId: id, date: date)
+                        expiryNoteID = nil
+                    },
+                    onCancel: { expiryNoteID = nil }
+                )
+            }
         }
     }
 
@@ -347,7 +375,24 @@ struct FullWindowView: View {
         scheduleSave()
     }
 
+    private func setExpiry(noteId: UUID, date: Date?) {
+        guard let i = notes.firstIndex(where: { $0.id == noteId }) else { return }
+        notes[i].expiryDate = date
+        scheduleSave()
+    }
+
+    private func reloadNotesFromDisk() {
+        guard let loaded = notesService.loadNotes() else { return }
+        notes = loaded
+        if case .note(let id) = selection, !loaded.contains(where: { $0.id == id }) {
+            selection = loaded.first.map { .note($0.id) } ?? .todos
+        }
+    }
+
     private func scheduleSave() {
+        if let idx = selectedNoteIndex {
+            notes[idx].captureVersionIfNeeded()
+        }
         let snapshot = notes
         pendingSaveWorkItem?.cancel()
         let work = DispatchWorkItem {
@@ -389,6 +434,9 @@ struct FullWindowSidebar: View {
     let onOpenSettings: () -> Void
     let onCollapse: () -> Void
     var onMoveNote: ((Int, Int) -> Void)? = nil
+    var onFloatNote: ((UUID) -> Void)? = nil
+    var onSetExpiry: ((UUID, Date?) -> Void)? = nil
+    var onRequestCustomExpiry: ((UUID) -> Void)? = nil
 
     @State private var draggingNoteID: UUID?
 
@@ -593,6 +641,12 @@ struct FullWindowSidebar: View {
 
             Spacer()
 
+            if note.expiryDate != nil {
+                Image(systemName: "timer")
+                    .font(.system(size: 9))
+                    .foregroundColor(.orange.opacity(0.9))
+            }
+
             if note.isLocked {
                 Image(systemName: "lock.fill")
                     .font(.system(size: 9))
@@ -611,6 +665,15 @@ struct FullWindowSidebar: View {
         }
         .contextMenu {
             Button(note.isPinned ? "Unpin" : "Pin") { onTogglePin(note.id) }
+            Button("Float Note") { onFloatNote?(note.id) }
+            Menu("Self-Destruct") {
+                ExpiryMenuItems(
+                    hasExpiry: note.expiryDate != nil,
+                    onPreset: { onSetExpiry?(note.id, Date().addingTimeInterval($0)) },
+                    onCustom: { onRequestCustomExpiry?(note.id) },
+                    onRemove: { onSetExpiry?(note.id, nil) }
+                )
+            }
             Divider()
             Button("Delete", role: .destructive) { onDeleteNote(note.id) }
         }

@@ -2,6 +2,7 @@ import Cocoa
 import SwiftUI
 import ServiceManagement
 import ObjectiveC
+import Combine
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     static var shared: AppDelegate!
@@ -11,6 +12,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     var onboardingWindow: NSWindow?
 
     private var popoverKeyMonitor: Any?
+    private var cancellables = Set<AnyCancellable>()
+    private weak var todoBadgeView: NSView?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -20,8 +23,10 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         setupPopover()
         setupNotifications()
         setupPopoverKeyMonitor()
+        setupTodoBadgeObservers()
         applyStartupSetting()
         checkAndShowOnboarding()
+        ExpiryManager.shared.start()
     }
 
     @objc func togglePopover(_ sender: AnyObject?) {
@@ -57,7 +62,49 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
             button.image?.size = NSSize(width: 14, height: 14)
             button.image?.isTemplate = true
             button.action = #selector(togglePopover(_:))
+            setupTodoBadge(on: button)
         }
+    }
+
+    // MARK: - Menu Bar Todo Badge
+
+    private func setupTodoBadge(on button: NSStatusBarButton) {
+        let size: CGFloat = 6
+        let dot = NSView(frame: NSRect(
+            x: button.bounds.width - size - 1,
+            y: button.bounds.height - size - 3,
+            width: size, height: size
+        ))
+        dot.wantsLayer = true
+        dot.layer?.backgroundColor = AppTheme.shared.accentNSColor.cgColor
+        dot.layer?.cornerRadius = size / 2
+        dot.autoresizingMask = [.minXMargin, .minYMargin]
+        dot.isHidden = true
+        button.addSubview(dot)
+        todoBadgeView = dot
+    }
+
+    private func setupTodoBadgeObservers() {
+        TodoFileService.shared.$todos
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateTodoBadge() }
+            .store(in: &cancellables)
+
+        SettingsService.shared.$settings
+            .map { ($0.showTodoBadge, $0.accentColorHex) }
+            .removeDuplicates { $0 == $1 }
+            .receive(on: RunLoop.main)
+            .sink { [weak self] _ in self?.updateTodoBadge() }
+            .store(in: &cancellables)
+
+        updateTodoBadge()
+    }
+
+    private func updateTodoBadge() {
+        let enabled = SettingsService.shared.settings.showTodoBadge
+        let hasOpenTodos = TodoFileService.shared.todos.contains { !$0.isCompleted }
+        todoBadgeView?.layer?.backgroundColor = AppTheme.shared.accentNSColor.cgColor
+        todoBadgeView?.isHidden = !(enabled && hasOpenTodos)
     }
 
     private func setupPopover() {

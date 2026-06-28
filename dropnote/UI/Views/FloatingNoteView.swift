@@ -1,10 +1,27 @@
 import SwiftUI
 
+/// A small, always-on-top, editable copy of a note that lives outside the popover.
+/// Edits are persisted straight to disk and broadcast so the popover / full window
+/// stay in sync.
 struct FloatingNoteView: View {
-    let note: Note
+    let noteID: UUID
+    @State private var title: String
+    @State private var text: String
+    @State private var rtf: Data?
+
     let onClose: () -> Void
-    @State private var windowOpacity: Double = 0.92
+
+    @State private var windowOpacity: Double = 0.95
     @State private var isHoveringClose = false
+    @State private var saveWork: DispatchWorkItem?
+
+    init(note: Note, onClose: @escaping () -> Void) {
+        self.noteID = note.id
+        _title = State(initialValue: note.title)
+        _text = State(initialValue: note.text)
+        _rtf = State(initialValue: note.attributedTextRTF)
+        self.onClose = onClose
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -20,6 +37,7 @@ struct FloatingNoteView: View {
         )
         .shadow(color: .black.opacity(0.16), radius: 16, x: 0, y: 6)
         .opacity(windowOpacity)
+        .appAccent()
     }
 
     // MARK: - Title Bar
@@ -29,7 +47,7 @@ struct FloatingNoteView: View {
         HStack(spacing: 7) {
             closeButton
 
-            Text(note.title.isEmpty ? "Untitled" : note.title)
+            Text(title.isEmpty ? "Untitled" : title)
                 .font(.system(size: 11, weight: .medium))
                 .foregroundColor(.secondary)
                 .lineLimit(1)
@@ -83,13 +101,44 @@ struct FloatingNoteView: View {
 
     @ViewBuilder
     private var noteContent: some View {
-        ScrollView {
-            Text(note.text.isEmpty ? "Empty note" : note.text)
-                .font(.system(size: 12))
-                .foregroundColor(note.text.isEmpty ? .secondary.opacity(0.5) : .primary.opacity(0.85))
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(10)
-                .textSelection(.enabled)
+        RichTextEditor(
+            text: $text,
+            attributedTextRTF: rtf,
+            onTextChange: scheduleSave,
+            onAttributedChange: { newRTF in
+                rtf = newRTF
+                scheduleSave()
+            }
+        )
+        .frame(minWidth: 200, minHeight: 120)
+    }
+
+    // MARK: - Persistence
+
+    private func scheduleSave() {
+        saveWork?.cancel()
+        let snapshotText = text
+        let snapshotRTF = rtf
+        let work = DispatchWorkItem {
+            persist(text: snapshotText, rtf: snapshotRTF)
+        }
+        saveWork = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
+    }
+
+    private func persist(text: String, rtf: Data?) {
+        DispatchQueue.global(qos: .utility).async {
+            guard var notes = NotesFileService.shared.loadNotes(),
+                  let idx = notes.firstIndex(where: { $0.id == noteID }) else { return }
+            notes[idx].text = text
+            notes[idx].attributedTextRTF = rtf
+            notes[idx].updateModifiedDate()
+            notes[idx].captureVersionIfNeeded()
+            NotesFileService.shared.saveNotes(notes)
+            DispatchQueue.main.async {
+                NoteSearchService.shared.indexNotes(with: notes)
+                NotificationCenter.default.post(name: ExpiryManager.notesReloadRequested, object: nil)
+            }
         }
     }
 }

@@ -27,6 +27,10 @@ struct TabsBar: View {
     // Float note action
     var onRequestFloat: ((Int) -> Void)? = nil
 
+    // Self-destruct / expiry
+    var onSetExpiry: ((Int, Date?) -> Void)? = nil
+    var onRequestCustomExpiry: ((Int) -> Void)? = nil
+
     // Drag-to-reorder
     var onMove: ((Int, Int) -> Void)? = nil
     @State private var draggingIndex: Int?
@@ -138,6 +142,11 @@ struct TabsBar: View {
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(.secondary)
             }
+            if notes[index].expiryDate != nil {
+                Image(systemName: "timer")
+                    .font(.system(size: 10, weight: .semibold))
+                    .foregroundColor(.orange)
+            }
             Text(notes[index].title)
                 .lineLimit(1)
         }
@@ -168,6 +177,14 @@ struct TabsBar: View {
             Button(notes[index].isLocked ? "Remove Lock" : "Lock") { onRequestToggleLock(index) }
             Divider()
             Button("Float Note") { onRequestFloat?(index) }
+            Menu("Self-Destruct") {
+                ExpiryMenuItems(
+                    hasExpiry: notes[index].expiryDate != nil,
+                    onPreset: { onSetExpiry?(index, Date().addingTimeInterval($0)) },
+                    onCustom: { onRequestCustomExpiry?(index) },
+                    onRemove: { onSetExpiry?(index, nil) }
+                )
+            }
             Divider()
             Button("Delete Note", role: .destructive) { onRequestDelete(index) }
         }

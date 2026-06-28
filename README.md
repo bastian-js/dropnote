@@ -37,7 +37,7 @@
 
 DropNote is a native macOS menu bar app for quick notes and todos. It lives in your menu bar and gives you instant access to your thoughts without opening a full app or breaking your focus.
 
-Built with **SwiftUI** and **AppKit** — fast, lightweight, and local-first.
+Built with **SwiftUI** and **AppKit** — fast, lightweight, and local-first. Your notes never leave your Mac.
 
 ---
 
@@ -61,18 +61,37 @@ Built with **SwiftUI** and **AppKit** — fast, lightweight, and local-first.
 
 ## Features
 
-| | Feature | Description |
-|---|---|---|
-| ⚡ | **Instant Access** | One click from the menu bar — always within reach |
-| 📝 | **Notes & Todos** | Free-form notes and structured task lists in one app |
-| 🔍 | **Full-Text Search** | Find any note or todo instantly |
-| 🔒 | **Note Locking** | Password or Touch ID protection per note |
-| 🖥️ | **Full Window Mode** | Distraction-free writing with `⌘ + ⌥ + N` |
-| 📌 | **Tabs & Pinned Notes** | Keep your most important notes at the top |
-| ✏️ | **Rich Text Editing** | Bold, italic, underline — no Markdown required |
-| 📤 | **Export** | Save notes as `.txt` or formatted `.pdf` |
-| 🏠 | **Local-First** | No accounts, no cloud, no tracking — ever |
-| ⚙️ | **Customizable** | Hotkeys, themes, and display options |
+**Capture & organize**
+
+| Feature | Description |
+|---|---|
+| **Instant access** | One click from the menu bar — always within reach |
+| **Notes & todos** | Free-form notes and structured task lists in one app |
+| **Tabs & pinned notes** | Keep important notes at the top; drag to reorder |
+| **Full-text search** | Find any note or todo instantly with `⌘ + ⌥ + F` |
+| **Full window mode** | Distraction-free writing with `⌘ + ⌥ + N` |
+
+**Write**
+
+| Feature | Description |
+|---|---|
+| **Rich text editing** | Bold, italic, underline — no Markdown required |
+| **Live Markdown** | Type `**bold**` and it formats as you go, no mode to toggle |
+| **Inline link previews** | Paste a link to get a title-and-favicon card right beneath it |
+| **Version history** | The last 10 local snapshots of each note, one click to restore |
+| **Voice transcription** | Live speech-to-text in multiple languages |
+
+**Keep it yours**
+
+| Feature | Description |
+|---|---|
+| **Self-destructing notes** | Set an expiry — DropNote notifies you, then removes the note |
+| **Floating notes** | Pin an editable note above every window while you work |
+| **Note locking** | Password or Touch ID protection per note |
+| **Custom accent color** | Pick your own accent across the whole app |
+| **Menu bar badge** | An accent dot shows when you have open todos |
+| **Export** | Save notes as `.txt` or formatted `.pdf` |
+| **Local-first** | No accounts, no cloud, no tracking — ever |
 
 ---
 
@@ -80,13 +99,13 @@ Built with **SwiftUI** and **AppKit** — fast, lightweight, and local-first.
 
 ### Option 1 — DMG *(recommended)*
 
-1. Download **`DropNote-v2.6.dmg`** from [**Releases**](https://github.com/bastian-js/dropnote/releases)
+1. Download **`DropNote-v2.8.dmg`** from [**Releases**](https://github.com/bastian-js/dropnote/releases)
 2. Open the DMG and drag **DropNote.app** into your **Applications** folder
 3. On first launch: right-click → **Open** to bypass Gatekeeper
 
 ### Option 2 — ZIP
 
-1. Download **`DropNote-v2.6.zip`** from [**Releases**](https://github.com/bastian-js/dropnote/releases)
+1. Download **`DropNote-v2.8.zip`** from [**Releases**](https://github.com/bastian-js/dropnote/releases)
 2. Unzip and move **DropNote.app** to your **Applications** folder
 3. On first launch: right-click → **Open** to bypass Gatekeeper
 
