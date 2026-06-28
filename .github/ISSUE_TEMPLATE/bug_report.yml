@@ -45,6 +45,7 @@ body:
       label: How did you install DropNote?
       options:
         - Mac App Store
+        - ZIP (GitHub Releases)
         - Built from source
     validations:
       required: true
