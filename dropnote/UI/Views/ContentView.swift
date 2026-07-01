@@ -31,6 +31,7 @@ struct ContentView: View {
     @State private var savingStatusTimer: Timer?
 
     @State private var unlockedNoteIDs: Set<UUID> = []
+    @State private var relockWorkItems: [UUID: DispatchWorkItem] = [:]
     @State private var themeMode: String = "system"
     @State private var showSearchRecentNotes: Bool = true
     @State private var cachedFilteredIndices: [Int] = []
@@ -147,8 +148,14 @@ struct ContentView: View {
             .onChange(of: searchText) { _, _ in recomputeFilteredIndices() }
             // Selecting a note tab deselects the todo tab
             .onChange(of: selectedTab) { _, _ in
+                relockOnSwitchIfNeeded()
                 if showingTodoTab { showingTodoTab = false }
                 if showingTranscriptionTab { showingTranscriptionTab = false }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: NSPopover.didCloseNotification)) { _ in
+                if settingsService.settings.noteRelockMode == "onPopoverClose" {
+                    clearAllUnlocks()
+                }
             }
     }
 
@@ -180,6 +187,7 @@ struct ContentView: View {
                     showTodoTabTitle: showTodoTabTitle,
                     isTodoTabSelected: showingTodoTab,
                     onSelectTodoTab: {
+                        relockOnSwitchIfNeeded()
                         withAnimation(.easeInOut(duration: 0.15)) {
                             showingTodoTab = true
                             showingTranscriptionTab = false
@@ -195,6 +203,7 @@ struct ContentView: View {
                     showTranscriptionTabTitle: showTranscriptionTabTitle,
                     isTranscriptionTabSelected: showingTranscriptionTab,
                     onSelectTranscriptionTab: {
+                        relockOnSwitchIfNeeded()
                         withAnimation(.easeInOut(duration: 0.15)) {
                             showingTranscriptionTab = true
                             showingTodoTab = false
@@ -651,8 +660,40 @@ struct ContentView: View {
         guard note.isLocked else { return }
         Task { @MainActor in
             let authenticated = await AuthenticationService.shared.authenticate(reason: "Unlock \"\(note.title)\"")
-            if authenticated { unlockedNoteIDs.insert(note.id) }
+            if authenticated {
+                unlockedNoteIDs.insert(note.id)
+                if settingsService.settings.noteRelockMode == "timer" {
+                    scheduleTimerRelock(for: note.id)
+                }
+            }
         }
+    }
+
+    // MARK: - Auto Re-Lock
+
+    /// Called when the visible note changes. In the default "onSwitch" mode this
+    /// re-locks any note that was unlocked this session.
+    private func relockOnSwitchIfNeeded() {
+        if settingsService.settings.noteRelockMode == "onSwitch" {
+            clearAllUnlocks()
+        }
+    }
+
+    private func clearAllUnlocks() {
+        relockWorkItems.values.forEach { $0.cancel() }
+        relockWorkItems.removeAll()
+        if !unlockedNoteIDs.isEmpty { unlockedNoteIDs.removeAll() }
+    }
+
+    private func scheduleTimerRelock(for id: UUID) {
+        relockWorkItems[id]?.cancel()
+        let minutes = max(1, settingsService.settings.noteRelockMinutes)
+        let work = DispatchWorkItem {
+            unlockedNoteIDs.remove(id)
+            relockWorkItems[id] = nil
+        }
+        relockWorkItems[id] = work
+        DispatchQueue.main.asyncAfter(deadline: .now() + Double(minutes) * 60, execute: work)
     }
 
     private func toggleLock(noteIndex: Int) {

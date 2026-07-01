@@ -26,6 +26,8 @@ struct SettingsView: View {
     @State private var accentColorHex = SettingsService.shared.settings.accentColorHex
     @State private var showTodoBadge = SettingsService.shared.settings.showTodoBadge
     @State private var showColorPopover = false
+    @State private var noteRelockMode = SettingsService.shared.settings.noteRelockMode
+    @State private var noteRelockMinutes = SettingsService.shared.settings.noteRelockMinutes
     @State private var userTags: [String] = SettingsService.shared.settings.userTags
     @State private var newTagInput: String = ""
     @State private var selectedSection: String? = "General"
@@ -226,6 +228,32 @@ struct SettingsView: View {
                     subtitle: "Show a dot in your accent color on the menu bar icon when todos are open",
                     isOn: $showTodoBadge
                 ) { updateSetting(showTodoBadge: $0) }
+            }
+
+            settingCard(title: "Note Lock") {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Re-lock an unlocked note…")
+                        .font(.footnote)
+                        .foregroundColor(.secondary)
+                        .padding(.bottom, 2)
+
+                    lockModeRow("When switching notes", "onSwitch")
+                    lockModeRow("After a set time", "timer")
+                    lockModeRow("When the popover closes", "onPopoverClose")
+                    lockModeRow("Only when the app restarts", "onAppRestart")
+
+                    if noteRelockMode == "timer" {
+                        Divider().padding(.vertical, 6)
+                        HStack {
+                            Text("Re-lock after")
+                                .font(.callout.weight(.semibold))
+                            Spacer()
+                            Stepper("\(noteRelockMinutes) min", value: $noteRelockMinutes, in: 1...120)
+                                .onChange(of: noteRelockMinutes) { _, v in updateSetting(noteRelockMinutes: v) }
+                                .fixedSize()
+                        }
+                    }
+                }
             }
 
             settingCard(title: "Shortcuts") {
@@ -541,6 +569,28 @@ struct SettingsView: View {
     private func setAccent(_ hex: String) {
         accentColorHex = hex
         updateSetting(accentColorHex: hex)
+    }
+
+    @ViewBuilder
+    private func lockModeRow(_ title: String, _ value: String) -> some View {
+        let isSelected = noteRelockMode == value
+        Button {
+            noteRelockMode = value
+            updateSetting(noteRelockMode: value)
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 15))
+                    .foregroundColor(isSelected ? .accentColor : .secondary.opacity(0.6))
+                Text(title)
+                    .font(.callout.weight(isSelected ? .semibold : .regular))
+                    .foregroundColor(.primary)
+                Spacer()
+            }
+            .padding(.vertical, 5)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     @ViewBuilder
@@ -893,6 +943,8 @@ struct SettingsView: View {
         userTags = s.userTags
         accentColorHex = s.accentColorHex
         showTodoBadge = s.showTodoBadge
+        noteRelockMode = s.noteRelockMode
+        noteRelockMinutes = s.noteRelockMinutes
     }
 
     private func updateSetting(
@@ -911,7 +963,9 @@ struct SettingsView: View {
         showEditorToolbar: Bool? = nil,
         userTags: [String]? = nil,
         accentColorHex: String? = nil,
-        showTodoBadge: Bool? = nil
+        showTodoBadge: Bool? = nil,
+        noteRelockMode: String? = nil,
+        noteRelockMinutes: Int? = nil
     ) {
         var s = SettingsService.shared.settings
         if let v = showInDock            { s.showInDock = v }
@@ -930,6 +984,8 @@ struct SettingsView: View {
         if let v = userTags              { s.userTags = v }
         if let v = accentColorHex        { s.accentColorHex = v }
         if let v = showTodoBadge         { s.showTodoBadge = v }
+        if let v = noteRelockMode        { s.noteRelockMode = v }
+        if let v = noteRelockMinutes     { s.noteRelockMinutes = v }
         SettingsService.shared.updateSetting(s)
         NotificationCenter.default.post(name: Notification.Name("SettingsChanged"), object: nil)
     }
@@ -1058,15 +1114,15 @@ private struct CustomAccentPicker: View {
                 .font(.system(size: 12, weight: .semibold))
                 .foregroundColor(.secondary)
 
-            VStack(spacing: 6) {
+            VStack(spacing: 5) {
                 ForEach(brightnessLevels.indices, id: \.self) { row in
-                    HStack(spacing: 6) {
+                    HStack(spacing: 5) {
                         ForEach(hues.indices, id: \.self) { col in
                             swatch(Color(hue: hues[col], saturation: saturation, brightness: brightnessLevels[row]))
                         }
                     }
                 }
-                HStack(spacing: 6) {
+                HStack(spacing: 5) {
                     ForEach(0..<12, id: \.self) { i in
                         swatch(Color(hue: 0, saturation: 0, brightness: Double(i) / 11.0))
                     }
@@ -1103,7 +1159,7 @@ private struct CustomAccentPicker: View {
             }
         }
         .padding(14)
-        .frame(width: 262)
+        .frame(width: 256)
     }
 
     private var isValidHex: Bool {
@@ -1118,11 +1174,11 @@ private struct CustomAccentPicker: View {
             hexInput = String(hex.dropFirst())
             onSelect(hex)
         } label: {
-            RoundedRectangle(cornerRadius: 5)
+            RoundedRectangle(cornerRadius: 4)
                 .fill(color)
-                .frame(width: 17, height: 17)
+                .frame(width: 14, height: 14)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 5)
+                    RoundedRectangle(cornerRadius: 4)
                         .stroke(Color.primary.opacity(isSelected ? 0.9 : 0.12), lineWidth: isSelected ? 2 : 0.5)
                 )
         }

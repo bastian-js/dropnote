@@ -46,6 +46,11 @@ struct AppSettings: Codable {
     var showTodoTabTitle: Bool = true
     /// Show the "Transcribe" text label on the popover tab (vs. icon only).
     var showTranscriptionTabTitle: Bool = false
+    /// When an unlocked note re-locks: "onSwitch" (default), "timer",
+    /// "onPopoverClose", or "onAppRestart".
+    var noteRelockMode: String = "onSwitch"
+    /// Minutes before re-locking when `noteRelockMode == "timer"`.
+    var noteRelockMinutes: Int = 5
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -70,6 +75,8 @@ struct AppSettings: Codable {
         transcriptionLocale    = try c.decodeIfPresent(String.self,         forKey: .transcriptionLocale)    ?? "de-DE"
         showTodoTabTitle       = try c.decodeIfPresent(Bool.self,           forKey: .showTodoTabTitle)       ?? true
         showTranscriptionTabTitle = try c.decodeIfPresent(Bool.self,        forKey: .showTranscriptionTabTitle) ?? false
+        noteRelockMode         = try c.decodeIfPresent(String.self,         forKey: .noteRelockMode)         ?? "onSwitch"
+        noteRelockMinutes      = try c.decodeIfPresent(Int.self,            forKey: .noteRelockMinutes)      ?? 5
     }
 
     init(
@@ -93,7 +100,9 @@ struct AppSettings: Codable {
         showTodoBadge: Bool = true,
         transcriptionLocale: String = "de-DE",
         showTodoTabTitle: Bool = true,
-        showTranscriptionTabTitle: Bool = false
+        showTranscriptionTabTitle: Bool = false,
+        noteRelockMode: String = "onSwitch",
+        noteRelockMinutes: Int = 5
     ) {
         self.showInDock = showInDock
         self.startOnBoot = startOnBoot
@@ -116,5 +125,7 @@ struct AppSettings: Codable {
         self.transcriptionLocale = transcriptionLocale
         self.showTodoTabTitle = showTodoTabTitle
         self.showTranscriptionTabTitle = showTranscriptionTabTitle
+        self.noteRelockMode = noteRelockMode
+        self.noteRelockMinutes = noteRelockMinutes
     }
 }
