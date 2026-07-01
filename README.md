@@ -135,7 +135,7 @@ Build and run with `⌘ + R` in Xcode 15+.
 
 ## Contributing
 
-Contributions are welcome. If you find a bug or have a feature request, please [open an issue](https://github.com/bastian-js/dropnote/issues) before submitting a pull request.
+Contributions are welcome. If you find a bug or have a feature request, please [open an issue](https://github.com/bastian-js/dropnote/issues/new/choose) before submitting a pull request.
 
 ---
 
