@@ -61,6 +61,11 @@ fastlane/test_output/
 releases
 
 # ================================
+# AI assistant instructions (local only)
+# ================================
+CLAUDE.md
+
+# ================================
 # Environment / Secrets
 # ================================
 .env
