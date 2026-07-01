@@ -37,10 +37,12 @@ struct ContentView: View {
 
     // Todo tab state
     @State private var showTodoTab: Bool
+    @State private var showTodoTabTitle: Bool
     @State private var showingTodoTab: Bool = false
 
     // Transcription tab state
     @State private var showTranscriptionTab: Bool
+    @State private var showTranscriptionTabTitle: Bool
     @State private var showingTranscriptionTab: Bool = false
 
     @State private var popoverSize: CGSize
@@ -60,7 +62,9 @@ struct ContentView: View {
         _themeMode = State(initialValue: settings.themeMode)
         _showSearchRecentNotes = State(initialValue: settings.showSearchRecentNotes)
         _showTodoTab = State(initialValue: settings.showTodoTab)
+        _showTodoTabTitle = State(initialValue: settings.showTodoTabTitle)
         _showTranscriptionTab = State(initialValue: settings.showTranscriptionTab)
+        _showTranscriptionTabTitle = State(initialValue: settings.showTranscriptionTabTitle)
         _notes = State(initialValue: [])
         _isLoadingNotes = State(initialValue: true)
         _popoverSize = State(initialValue: CGSize(width: settings.popoverWidth, height: settings.popoverHeight))
@@ -77,7 +81,10 @@ struct ContentView: View {
                 recomputeFilteredIndices()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
-                if let appDelegate = AppDelegate.shared, appDelegate.popover?.isShown == true {
+                guard let appDelegate = AppDelegate.shared else { return }
+                // Keep the popover open while a Touch ID / password prompt has focus.
+                if appDelegate.isHoldingPopoverForAuth { return }
+                if appDelegate.popover?.isShown == true {
                     appDelegate.popover?.performClose(nil)
                 }
             }
@@ -100,9 +107,11 @@ struct ContentView: View {
                 showSearchRecentNotes = s.showSearchRecentNotes
                 let newShowTodoTab = s.showTodoTab
                 showTodoTab = newShowTodoTab
+                showTodoTabTitle = s.showTodoTabTitle
                 if !newShowTodoTab && showingTodoTab { showingTodoTab = false }
                 let newShowTranscriptionTab = s.showTranscriptionTab
                 showTranscriptionTab = newShowTranscriptionTab
+                showTranscriptionTabTitle = s.showTranscriptionTabTitle
                 if !newShowTranscriptionTab && showingTranscriptionTab { showingTranscriptionTab = false }
                 popoverSizeLocked = s.popoverSizeLocked
                 showEditorToolbar = s.showEditorToolbar
@@ -168,6 +177,7 @@ struct ContentView: View {
                     onRequestTogglePin: { index in togglePin(noteIndex: index) },
                     onRequestToggleLock: { index in toggleLock(noteIndex: index) },
                     showTodoTab: showTodoTab,
+                    showTodoTabTitle: showTodoTabTitle,
                     isTodoTabSelected: showingTodoTab,
                     onSelectTodoTab: {
                         withAnimation(.easeInOut(duration: 0.15)) {
@@ -182,6 +192,7 @@ struct ContentView: View {
                         }
                     },
                     showTranscriptionTab: showTranscriptionTab,
+                    showTranscriptionTabTitle: showTranscriptionTabTitle,
                     isTranscriptionTabSelected: showingTranscriptionTab,
                     onSelectTranscriptionTab: {
                         withAnimation(.easeInOut(duration: 0.15)) {
@@ -413,8 +424,12 @@ struct ContentView: View {
         }
         let lowercasedQuery = trimmed.lowercased()
         return notes.indices.filter { index in
-            notes[index].title.lowercased().contains(lowercasedQuery) ||
-            notes[index].text.lowercased().contains(lowercasedQuery)
+            let note = notes[index]
+            if note.title.lowercased().contains(lowercasedQuery) { return true }
+            // Never match on the hidden body of a locked note — that would leak its
+            // contents through search. Only search text once it's been unlocked.
+            let isReadable = !note.isLocked || unlockedNoteIDs.contains(note.id)
+            return isReadable && note.text.lowercased().contains(lowercasedQuery)
         }
     }
 

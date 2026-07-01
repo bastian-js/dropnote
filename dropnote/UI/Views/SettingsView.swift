@@ -11,7 +11,9 @@ struct SettingsView: View {
     @State private var themeMode = SettingsService.shared.settings.themeMode
     @State private var showSearchRecentNotes = SettingsService.shared.settings.showSearchRecentNotes
     @State private var showTodoTab = SettingsService.shared.settings.showTodoTab
+    @State private var showTodoTabTitle = SettingsService.shared.settings.showTodoTabTitle
     @State private var showTranscriptionTab = SettingsService.shared.settings.showTranscriptionTab
+    @State private var showTranscriptionTabTitle = SettingsService.shared.settings.showTranscriptionTabTitle
     @State private var fullWindowHotKey = SettingsService.shared.settings.fullWindowHotKey
     @State private var searchHotKeyError: String? = nil
     @State private var fullWindowHotKeyError: String? = nil
@@ -23,6 +25,7 @@ struct SettingsView: View {
     @State private var showEditorToolbar = SettingsService.shared.settings.showEditorToolbar
     @State private var accentColorHex = SettingsService.shared.settings.accentColorHex
     @State private var showTodoBadge = SettingsService.shared.settings.showTodoBadge
+    @State private var showColorPopover = false
     @State private var userTags: [String] = SettingsService.shared.settings.userTags
     @State private var newTagInput: String = ""
     @State private var selectedSection: String? = "General"
@@ -164,14 +167,22 @@ struct SettingsView: View {
 
                 toggleRow(
                     title: "Show in Dock",
-                    subtitle: "Keep the app visible in the Dock",
+                    subtitle: "Off: menu bar only — hidden from the Dock and ⌘-Tab",
                     isOn: $showInDock
-                ) { updateSetting(showInDock: $0) }
+                ) { newValue in
+                    updateSetting(showInDock: newValue)
+                    // Switching to accessory reorders the app's windows and drops this
+                    // one behind others — pull it back to the front so it stays put.
+                    DispatchQueue.main.async {
+                        NSApp.activate(ignoringOtherApps: true)
+                        SettingsWindowController.shared.window?.makeKeyAndOrderFront(nil)
+                    }
+                }
             }
 
-            settingCard(title: "Features") {
+            settingCard(title: "Todo Tab") {
                 toggleRow(
-                    title: "Todo tab",
+                    title: "Show todo tab",
                     subtitle: "Show a todo list as the first tab in the popover",
                     isOn: $showTodoTab
                 ) { updateSetting(showTodoTab: $0) }
@@ -179,7 +190,23 @@ struct SettingsView: View {
                 Divider().padding(.vertical, 4)
 
                 toggleRow(
-                    title: "Transcription tab",
+                    title: "Show tab title",
+                    subtitle: "Show the “Todos” label next to the icon (off = icon only)",
+                    isOn: $showTodoTabTitle
+                ) { updateSetting(showTodoTabTitle: $0) }
+
+                Divider().padding(.vertical, 4)
+
+                VStack(alignment: .leading, spacing: 8) {
+                    Text("Tags")
+                        .font(.callout.weight(.semibold))
+                    tagsEditor
+                }
+            }
+
+            settingCard(title: "Transcription") {
+                toggleRow(
+                    title: "Show transcription tab",
                     subtitle: "Show a mic tab to transcribe speech into text",
                     isOn: $showTranscriptionTab
                 ) { updateSetting(showTranscriptionTab: $0) }
@@ -187,14 +214,18 @@ struct SettingsView: View {
                 Divider().padding(.vertical, 4)
 
                 toggleRow(
-                    title: "Menu bar todo badge",
+                    title: "Show tab title",
+                    subtitle: "Show the “Transcribe” label next to the icon (off = icon only)",
+                    isOn: $showTranscriptionTabTitle
+                ) { updateSetting(showTranscriptionTabTitle: $0) }
+            }
+
+            settingCard(title: "Menu Bar") {
+                toggleRow(
+                    title: "Todo badge",
                     subtitle: "Show a dot in your accent color on the menu bar icon when todos are open",
                     isOn: $showTodoBadge
                 ) { updateSetting(showTodoBadge: $0) }
-            }
-
-            settingCard(title: "Tags") {
-                tagsEditor
             }
 
             settingCard(title: "Shortcuts") {
@@ -450,12 +481,34 @@ struct SettingsView: View {
 
                 Spacer(minLength: 0)
 
-                ColorPicker("", selection: Binding(
-                    get: { Color(hex: accentColorHex) ?? .accentColor },
-                    set: { setAccent($0.hexString) }
-                ), supportsOpacity: false)
-                .labelsHidden()
+                Button {
+                    showColorPopover.toggle()
+                } label: {
+                    ZStack {
+                        Circle()
+                            .fill(AngularGradient(
+                                colors: [.red, .orange, .yellow, .green, .cyan, .blue, .purple, .pink, .red],
+                                center: .center
+                            ))
+                            .frame(width: 20, height: 20)
+                        Image(systemName: "eyedropper")
+                            .font(.system(size: 8, weight: .bold))
+                            .foregroundColor(.white)
+                            .shadow(radius: 1)
+                        Circle()
+                            .stroke(Color.primary.opacity(0.15), lineWidth: 1)
+                            .frame(width: 24, height: 24)
+                    }
+                    .frame(width: 26, height: 26)
+                }
+                .buttonStyle(.plain)
                 .help("Custom color")
+                .popover(isPresented: $showColorPopover, arrowEdge: .bottom) {
+                    CustomAccentPicker(current: accentColorHex) { hex in
+                        setAccent(hex)
+                    }
+                    .appAccent()
+                }
             }
         }
     }
@@ -722,10 +775,20 @@ struct SettingsView: View {
                     )
                     .onSubmit { addTag() }
 
-                Button("Add") { addTag() }
-                    .buttonStyle(.bordered)
-                    .controlSize(.small)
-                    .disabled(newTagInput.trimmingCharacters(in: .whitespaces).isEmpty)
+                let isTagEmpty = newTagInput.trimmingCharacters(in: .whitespaces).isEmpty
+                Button { addTag() } label: {
+                    Text("Add")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 7)
+                        .background(
+                            RoundedRectangle(cornerRadius: 8)
+                                .fill(isTagEmpty ? Color.gray.opacity(0.4) : Color.accentColor)
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(isTagEmpty)
             }
         }
     }
@@ -822,7 +885,9 @@ struct SettingsView: View {
         themeMode = s.themeMode
         showSearchRecentNotes = s.showSearchRecentNotes
         showTodoTab = s.showTodoTab
+        showTodoTabTitle = s.showTodoTabTitle
         showTranscriptionTab = s.showTranscriptionTab
+        showTranscriptionTabTitle = s.showTranscriptionTabTitle
         popoverSizeLocked = s.popoverSizeLocked
         showEditorToolbar = s.showEditorToolbar
         userTags = s.userTags
@@ -839,7 +904,9 @@ struct SettingsView: View {
         themeMode: String? = nil,
         showSearchRecentNotes: Bool? = nil,
         showTodoTab: Bool? = nil,
+        showTodoTabTitle: Bool? = nil,
         showTranscriptionTab: Bool? = nil,
+        showTranscriptionTabTitle: Bool? = nil,
         popoverSizeLocked: Bool? = nil,
         showEditorToolbar: Bool? = nil,
         userTags: [String]? = nil,
@@ -855,7 +922,9 @@ struct SettingsView: View {
         if let v = themeMode             { s.themeMode = v }
         if let v = showSearchRecentNotes { s.showSearchRecentNotes = v }
         if let v = showTodoTab           { s.showTodoTab = v }
+        if let v = showTodoTabTitle      { s.showTodoTabTitle = v }
         if let v = showTranscriptionTab  { s.showTranscriptionTab = v }
+        if let v = showTranscriptionTabTitle { s.showTranscriptionTabTitle = v }
         if let v = popoverSizeLocked     { s.popoverSizeLocked = v }
         if let v = showEditorToolbar     { s.showEditorToolbar = v }
         if let v = userTags              { s.userTags = v }
@@ -960,5 +1029,108 @@ struct SettingsView: View {
         case "dark":  return .dark
         default:      return nil
         }
+    }
+}
+
+// MARK: - Custom Accent Picker
+
+/// A fully custom color picker (no AppKit `NSColorPanel`) that matches the app's
+/// look: a generated spectrum grid, a grayscale row, and a hex field.
+private struct CustomAccentPicker: View {
+    let current: String
+    let onSelect: (String) -> Void
+
+    @State private var hexInput: String
+
+    init(current: String, onSelect: @escaping (String) -> Void) {
+        self.current = current
+        self.onSelect = onSelect
+        _hexInput = State(initialValue: current.hasPrefix("#") ? String(current.dropFirst()) : current)
+    }
+
+    private let hues: [Double] = (0..<12).map { Double($0) / 12.0 }
+    private let brightnessLevels: [Double] = [1.0, 0.82, 0.6]
+    private let saturation: Double = 0.85
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Custom color")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.secondary)
+
+            VStack(spacing: 6) {
+                ForEach(brightnessLevels.indices, id: \.self) { row in
+                    HStack(spacing: 6) {
+                        ForEach(hues.indices, id: \.self) { col in
+                            swatch(Color(hue: hues[col], saturation: saturation, brightness: brightnessLevels[row]))
+                        }
+                    }
+                }
+                HStack(spacing: 6) {
+                    ForEach(0..<12, id: \.self) { i in
+                        swatch(Color(hue: 0, saturation: 0, brightness: Double(i) / 11.0))
+                    }
+                }
+            }
+
+            Divider()
+
+            HStack(spacing: 8) {
+                Text("#")
+                    .font(.system(size: 12, weight: .semibold, design: .monospaced))
+                    .foregroundColor(.secondary)
+                TextField("RRGGBB", text: $hexInput)
+                    .textFieldStyle(.plain)
+                    .font(.system(size: 12, weight: .medium, design: .monospaced))
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 6)
+                    .background(RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.08)))
+                    .onSubmit { applyHex() }
+
+                Button { applyHex() } label: {
+                    Text("Apply")
+                        .font(.system(size: 12, weight: .semibold))
+                        .foregroundColor(.white)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 6)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(isValidHex ? Color.accentColor : Color.gray.opacity(0.4))
+                        )
+                }
+                .buttonStyle(.plain)
+                .disabled(!isValidHex)
+            }
+        }
+        .padding(14)
+        .frame(width: 262)
+    }
+
+    private var isValidHex: Bool {
+        Color(hex: hexInput) != nil
+    }
+
+    @ViewBuilder
+    private func swatch(_ color: Color) -> some View {
+        let hex = color.hexString
+        let isSelected = hex.caseInsensitiveCompare(current) == .orderedSame
+        Button {
+            hexInput = String(hex.dropFirst())
+            onSelect(hex)
+        } label: {
+            RoundedRectangle(cornerRadius: 5)
+                .fill(color)
+                .frame(width: 17, height: 17)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 5)
+                        .stroke(Color.primary.opacity(isSelected ? 0.9 : 0.12), lineWidth: isSelected ? 2 : 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+
+    private func applyHex() {
+        guard let color = Color(hex: hexInput) else { return }
+        onSelect(color.hexString)
     }
 }

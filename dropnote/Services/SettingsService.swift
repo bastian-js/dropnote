@@ -55,8 +55,10 @@ final class SettingsService: ObservableObject {
     }
     
     func reapplyActivationPolicy() {
-        let hasVisibleWindow = NSApp.windows.contains { $0.isVisible && $0.styleMask.contains(.titled) }
-        let policy: NSApplication.ActivationPolicy = settings.showInDock || hasVisibleWindow ? .regular : .accessory
+        // When "Show in Dock" is off, stay a menu-bar-only accessory app even while
+        // windows are open — no Dock tile, no cmd-tab entry. Accessory windows can
+        // still become key and show the menu bar when focused.
+        let policy: NSApplication.ActivationPolicy = settings.showInDock ? .regular : .accessory
         NSApplication.shared.setActivationPolicy(policy)
     }
 

@@ -42,6 +42,10 @@ struct AppSettings: Codable {
     var showTodoBadge: Bool = true
     /// Preferred speech-to-text language (locale identifier, e.g. "de-DE").
     var transcriptionLocale: String = "de-DE"
+    /// Show the "Todos" text label on the popover tab (vs. icon only).
+    var showTodoTabTitle: Bool = true
+    /// Show the "Transcribe" text label on the popover tab (vs. icon only).
+    var showTranscriptionTabTitle: Bool = false
 
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
@@ -64,6 +68,8 @@ struct AppSettings: Codable {
         accentColorHex         = try c.decodeIfPresent(String.self,         forKey: .accentColorHex)         ?? ""
         showTodoBadge          = try c.decodeIfPresent(Bool.self,           forKey: .showTodoBadge)          ?? true
         transcriptionLocale    = try c.decodeIfPresent(String.self,         forKey: .transcriptionLocale)    ?? "de-DE"
+        showTodoTabTitle       = try c.decodeIfPresent(Bool.self,           forKey: .showTodoTabTitle)       ?? true
+        showTranscriptionTabTitle = try c.decodeIfPresent(Bool.self,        forKey: .showTranscriptionTabTitle) ?? false
     }
 
     init(
@@ -85,7 +91,9 @@ struct AppSettings: Codable {
         showEditorToolbar: Bool = true,
         accentColorHex: String = "",
         showTodoBadge: Bool = true,
-        transcriptionLocale: String = "de-DE"
+        transcriptionLocale: String = "de-DE",
+        showTodoTabTitle: Bool = true,
+        showTranscriptionTabTitle: Bool = false
     ) {
         self.showInDock = showInDock
         self.startOnBoot = startOnBoot
@@ -106,5 +114,7 @@ struct AppSettings: Codable {
         self.accentColorHex = accentColorHex
         self.showTodoBadge = showTodoBadge
         self.transcriptionLocale = transcriptionLocale
+        self.showTodoTabTitle = showTodoTabTitle
+        self.showTranscriptionTabTitle = showTranscriptionTabTitle
     }
 }

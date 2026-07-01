@@ -31,6 +31,10 @@ final class AuthenticationService {
     
     @MainActor
     func authenticate(reason: String) async -> Bool {
+        // Keep the menu bar popover open while the system auth prompt takes focus.
+        AppDelegate.shared?.beginAuthenticationHold()
+        defer { AppDelegate.shared?.endAuthenticationHold() }
+
         let context = LAContext()
         context.localizedCancelTitle = "Cancel"
         var error: NSError?

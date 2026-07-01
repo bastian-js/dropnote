@@ -15,12 +15,14 @@ struct TabsBar: View {
 
     // Todo tab support
     var showTodoTab: Bool = false
+    var showTodoTabTitle: Bool = true
     var isTodoTabSelected: Bool = false
     var onSelectTodoTab: (() -> Void)? = nil
     var onSelectNoteTab: (() -> Void)? = nil
 
     // Transcription tab support
     var showTranscriptionTab: Bool = false
+    var showTranscriptionTabTitle: Bool = false
     var isTranscriptionTabSelected: Bool = false
     var onSelectTranscriptionTab: (() -> Void)? = nil
 
@@ -64,8 +66,10 @@ struct TabsBar: View {
                 Image(systemName: "checkmark.circle\(isTodoTabSelected ? ".fill" : "")")
                     .font(.system(size: 10, weight: .semibold))
                     .foregroundColor(isTodoTabSelected ? .accentColor : .secondary)
-                Text("Todos")
-                    .lineLimit(1)
+                if showTodoTabTitle {
+                    Text("Todos")
+                        .lineLimit(1)
+                }
             }
             .padding(.horizontal, 8)
             .padding(.vertical, 6)
@@ -84,14 +88,20 @@ struct TabsBar: View {
         Button {
             onSelectTranscriptionTab?()
         } label: {
-            Image(systemName: "mic\(isTranscriptionTabSelected ? ".fill" : "")")
-                .font(.system(size: 11, weight: .semibold))
-                .foregroundColor(isTranscriptionTabSelected ? .accentColor : .secondary)
-                .padding(.horizontal, 8)
-                .padding(.vertical, 6)
-                .background(isTranscriptionTabSelected ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
-                .cornerRadius(6)
-                .contentShape(RoundedRectangle(cornerRadius: 6))
+            HStack(spacing: 5) {
+                Image(systemName: "mic\(isTranscriptionTabSelected ? ".fill" : "")")
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundColor(isTranscriptionTabSelected ? .accentColor : .secondary)
+                if showTranscriptionTabTitle {
+                    Text("Transcribe")
+                        .lineLimit(1)
+                }
+            }
+            .padding(.horizontal, 8)
+            .padding(.vertical, 6)
+            .background(isTranscriptionTabSelected ? ColorSchemeHelper.selectedTabBackground() : Color.clear)
+            .cornerRadius(6)
+            .contentShape(RoundedRectangle(cornerRadius: 6))
         }
         .buttonStyle(.plain)
         .help("Transcribe")

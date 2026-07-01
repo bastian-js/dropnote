@@ -49,7 +49,7 @@ final class NoteSearchService: ObservableObject {
                     note: note,
                     score: 0,
                     matchedInTitle: false,
-                    preview: getPreview(from: note.textLowercased, query: "", maxLength: 80),
+                    preview: note.isLocked ? "Locked note" : getPreview(from: note.textLowercased, query: "", maxLength: 80),
                     highlightRanges: []
                 )
             }
@@ -59,7 +59,8 @@ final class NoteSearchService: ObservableObject {
         let queryLowercased = query.lowercased()
         let scoredResults: [(note: IndexedNote, score: Double, matchedInTitle: Bool)] = notes.compactMap { note in
             let matchedInTitle = note.titleLowercased.contains(queryLowercased)
-            let matchedInText = note.textLowercased.contains(queryLowercased)
+            // Never match (or later preview) the body of a locked note.
+            let matchedInText = !note.isLocked && note.textLowercased.contains(queryLowercased)
 
             guard matchedInTitle || matchedInText else {
                 return nil
@@ -83,8 +84,12 @@ final class NoteSearchService: ObservableObject {
         }
 
         return scoredResults.prefix(limit).map { result in
-            let preview = getPreview(from: result.note.textLowercased, query: queryLowercased, maxLength: 100)
-            let highlightRanges = findHighlightRanges(in: preview, query: queryLowercased)
+            let preview = result.note.isLocked
+                ? "Locked note"
+                : getPreview(from: result.note.textLowercased, query: queryLowercased, maxLength: 100)
+            let highlightRanges = result.note.isLocked
+                ? []
+                : findHighlightRanges(in: preview, query: queryLowercased)
             
             return SearchResult(
                 id: result.note.id,
@@ -192,7 +197,8 @@ final class NoteSearchService: ObservableObject {
                 title: note.title,
                 lastModified: note.lastModified ?? Date(),
                 titleLowercased: note.title.lowercased(),
-                textLowercased: note.text.lowercased()
+                textLowercased: note.text.lowercased(),
+                isLocked: note.isLocked
             )
         }
     }

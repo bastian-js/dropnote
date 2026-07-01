@@ -6,4 +6,5 @@ struct IndexedNote {
     let lastModified: Date
     let titleLowercased: String
     let textLowercased: String
+    let isLocked: Bool
 }

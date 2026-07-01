@@ -11,7 +11,8 @@ final class FullWindowController: NSObject, NSWindowDelegate {
     }
 
     func show() {
-        NSApp.setActivationPolicy(.regular)
+        // Respect the "Show in Dock" setting instead of forcing the Dock icon on.
+        SettingsService.shared.reapplyActivationPolicy()
         NSApplication.shared.activate(ignoringOtherApps: true)
 
         if let existing = window {

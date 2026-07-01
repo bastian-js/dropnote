@@ -14,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var popoverKeyMonitor: Any?
     private var cancellables = Set<AnyCancellable>()
     private weak var todoBadgeView: NSView?
+    private(set) var isHoldingPopoverForAuth = false
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -248,7 +249,31 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         showOnboardingWindow()
     }
 
+    // MARK: - Auth hold (keep the popover open across Touch ID / password prompts)
+
+    /// Prevents the transient popover from auto-closing while a system auth prompt
+    /// steals activation. Pair every call with `endAuthenticationHold()`.
+    func beginAuthenticationHold() {
+        isHoldingPopoverForAuth = true
+        popover?.behavior = .applicationDefined
+    }
+
+    func endAuthenticationHold() {
+        isHoldingPopoverForAuth = false
+        popover?.behavior = .transient
+        // Bring the popover back to the front and refocus so the note is usable at once.
+        guard popover?.isShown == true,
+              let window = popover?.contentViewController?.view.window else { return }
+        NSApp.activate(ignoringOtherApps: true)
+        window.makeKey()
+        if let tv = NSTextView.findInWindow(window) {
+            window.makeFirstResponder(tv)
+        }
+    }
+
     @objc private func handleAppDidResignActive() {
+        // Don't close the popover while we're mid-authentication.
+        if isHoldingPopoverForAuth { return }
         popover.performClose(nil)
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
             SettingsService.shared.reapplyActivationPolicy()
