@@ -3,15 +3,16 @@ import AppKit
 import PDFKit
 
 struct EditorToolbar: View {
-    let noteIndex: Int
-    @Binding var notes: [Note]
-    var onRequestDelete: (Int) -> Void
+    let noteID: UUID
+    @ObservedObject var store: NotesStore = .shared
+    var onRequestDelete: (UUID) -> Void
     var onRequestAddNote: () -> Void
-    var onRequestTogglePin: (Int) -> Void
-    var onRequestToggleLock: (Int) -> Void
-    var onSave: () -> Void
+    var onRequestTogglePin: (UUID) -> Void
+    var onRequestToggleLock: (UUID) -> Void
 
     @State private var showHistory: Bool = false
+
+    private var note: Note? { store.note(noteID) }
 
     var body: some View {
         HStack(spacing: 12) {
@@ -19,12 +20,12 @@ struct EditorToolbar: View {
 
             addNoteButton
 
-            if noteIndex < notes.count {
+            if let note {
                 deleteNoteButton
-                pinNoteButton
-                lockNoteButton
+                pinNoteButton(note: note)
+                lockNoteButton(note: note)
                 historyButton
-                exportMenu
+                exportMenu(note: note)
             }
 
             Spacer(minLength: 0)
@@ -38,7 +39,7 @@ struct EditorToolbar: View {
                 .stroke(ColorSchemeHelper.borderColor(), lineWidth: 1)
         )
     }
-    
+
     @ViewBuilder
     private var addNoteButton: some View {
         toolbarButton(
@@ -49,56 +50,56 @@ struct EditorToolbar: View {
             }
         )
     }
-    
+
     @ViewBuilder
     private var deleteNoteButton: some View {
         toolbarButton(
             icon: "trash",
             tooltip: "Delete",
             action: {
-                onRequestDelete(noteIndex)
+                onRequestDelete(noteID)
             }
         )
     }
-    
+
     @ViewBuilder
-    private var pinNoteButton: some View {
+    private func pinNoteButton(note: Note) -> some View {
         toolbarButton(
-            icon: notes[noteIndex].isPinned ? "pin.fill" : "pin",
-            tooltip: notes[noteIndex].isPinned ? "Unpin" : "Pin",
+            icon: note.isPinned ? "pin.fill" : "pin",
+            tooltip: note.isPinned ? "Unpin" : "Pin",
             action: {
-                onRequestTogglePin(noteIndex)
+                onRequestTogglePin(noteID)
             }
         )
     }
-    
+
     @ViewBuilder
-    private var lockNoteButton: some View {
+    private func lockNoteButton(note: Note) -> some View {
         toolbarButton(
-            icon: notes[noteIndex].isLocked ? "lock.fill" : "lock.open",
-            tooltip: notes[noteIndex].isLocked ? "Unlock / remove lock" : "Lock",
+            icon: note.isLocked ? "lock.fill" : "lock.open",
+            tooltip: note.isLocked ? "Unlock / remove lock" : "Lock",
             action: {
-                onRequestToggleLock(noteIndex)
+                onRequestToggleLock(noteID)
             }
         )
     }
-    
+
     @ViewBuilder
-    private var exportMenu: some View {
+    private func exportMenu(note: Note) -> some View {
         Menu {
             Button("Copy as Plain Text") {
                 NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(notes[noteIndex].text, forType: .string)
+                NSPasteboard.general.setString(note.text, forType: .string)
             }
-            
+
             Divider()
-            
+
             Button("Export as TXT…") {
-                exportAsTXT(noteIndex: noteIndex)
+                exportAsTXT(note: note)
             }
-            
+
             Button("Export as PDF…") {
-                exportAsPDF(noteIndex: noteIndex)
+                exportAsPDF(note: note)
             }
         } label: {
             Image(systemName: "square.and.arrow.up")
@@ -110,7 +111,7 @@ struct EditorToolbar: View {
         .menuIndicator(.hidden)
         .help("Share / Export")
     }
-    
+
     @ViewBuilder
     private var historyButton: some View {
         Button {
@@ -124,7 +125,10 @@ struct EditorToolbar: View {
         .buttonStyle(BorderlessButtonStyle())
         .help("Version history")
         .popover(isPresented: $showHistory, arrowEdge: .top) {
-            NoteHistoryView(note: $notes[noteIndex], onRestore: onSave)
+            NoteHistoryView(
+                note: store.binding(for: noteID),
+                onRestore: { store.scheduleSave(debounce: 0) }
+            )
         }
     }
 
@@ -140,81 +144,79 @@ struct EditorToolbar: View {
         .buttonStyle(BorderlessButtonStyle())
         .help(tooltip)
     }
-    
+
     // MARK: - Private Methods
-    
-    private func exportAsTXT(noteIndex: Int) {
-        let note = notes[noteIndex]
+
+    private func exportAsTXT(note: Note) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "\(note.title).txt"
         panel.allowedContentTypes = [.plainText]
         panel.canCreateDirectories = true
-        
+
         NSApp.activate(ignoringOtherApps: true)
-        
+
         panel.begin { response in
             guard response == .OK, let url = panel.url else {
                 return
             }
-            
+
             if let textData = FileExportHelper.createTextData(from: note.text) {
                 try? textData.write(to: url, options: .atomic)
             }
         }
     }
-    
-    private func exportAsPDF(noteIndex: Int) {
-        let note = notes[noteIndex]
+
+    private func exportAsPDF(note: Note) {
         let panel = NSSavePanel()
         panel.nameFieldStringValue = "\(note.title).pdf"
         panel.allowedContentTypes = [.pdf]
         panel.canCreateDirectories = true
-        
+
         NSApp.activate(ignoringOtherApps: true)
-        
+
         panel.begin { response in
             guard response == .OK, let url = panel.url else {
                 return
             }
-            
+
             let pdfDocument = PDFDocument()
             let pageSize = CGSize(width: 612, height: 792)
             let page = PDFPage()
             page.setBounds(CGRect(origin: .zero, size: pageSize), for: .mediaBox)
-            
+
             pdfDocument.insert(page, at: 0)
-            
+
             // Render text to PDF
             let textColor: NSColor = NSAppearance.current.name == .darkAqua ? .white : .black
             let attributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 12),
                 .foregroundColor: textColor
             ]
-            
+
             let titleText = "\(note.title)\n\n"
             let titleColor: NSColor = NSAppearance.current.name == .darkAqua ? .white : .black
             let titleAttributes: [NSAttributedString.Key: Any] = [
                 .font: NSFont.systemFont(ofSize: 14, weight: .semibold),
                 .foregroundColor: titleColor
             ]
-            
+
             var y: CGFloat = 36
             let x: CGFloat = 36
             let pageWidth = pageSize.width - 72
-            
+
             // Draw title
             let titleString = NSAttributedString(string: titleText, attributes: titleAttributes)
             let titleSize = titleString.size()
             let titleRect = CGRect(x: x, y: pageSize.height - y - titleSize.height, width: pageWidth, height: titleSize.height)
             titleString.draw(in: titleRect)
             y += titleSize.height + 12
-            
+
             // Draw body text
             let textString = NSAttributedString(string: note.text, attributes: attributes)
             let textSize = textString.size()
             let textRect = CGRect(x: x, y: pageSize.height - y - textSize.height, width: pageWidth, height: textSize.height)
             textString.draw(in: textRect)
-            
+
             if let pdfData = pdfDocument.dataRepresentation() {
                 try? pdfData.write(to: url, options: .atomic)
             }

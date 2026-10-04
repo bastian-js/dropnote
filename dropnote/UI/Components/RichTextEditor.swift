@@ -1,21 +1,44 @@
 import SwiftUI
 import AppKit
 
+/// An `NSTextView` wrapper for a single document.
+///
+/// It deliberately takes **values plus a callback** instead of a `Binding`. The
+/// coordinator outlives any single SwiftUI update, and a `Binding` created from
+/// `$notes[index]` keeps pointing at that index forever — so an AppKit callback
+/// arriving after a note was added or deleted used to write through a stale index
+/// and trap with "Index out of range". A callback carries no index at all; the
+/// owner resolves the note by id when the change arrives.
+///
+/// `contentID` identifies the document being edited. When it changes, the whole
+/// text view is reloaded — that is what keeps the editor showing the note the
+/// tab bar says is selected.
 struct RichTextEditor: NSViewRepresentable {
-    @Binding var text: String
-    var attributedTextRTF: Data?
-    var onTextChange: () -> Void = {}
-    var onAttributedChange: (Data?) -> Void = { _ in }
-    
+    let contentID: UUID
+    let text: String
+    let attributedTextRTF: Data?
+    /// Called on every edit with the new plain text and its RTF representation.
+    var onChange: (String, Data?) -> Void = { _, _ in }
+
     private static let rtfCache: NSCache<NSData, NSAttributedString> = {
         let cache = NSCache<NSData, NSAttributedString>()
         cache.countLimit = 20
         cache.totalCostLimit = 6 * 1024 * 1024  // 6 MB total
         return cache
     }()
-    
+
+    static let defaultFont = NSFont.systemFont(ofSize: 15)
+
+    static var defaultAttributes: [NSAttributedString.Key: Any] {
+        [.font: defaultFont, .foregroundColor: NSColor.labelColor]
+    }
+
     class Coordinator: NSObject, NSTextViewDelegate {
+        /// Refreshed on every `updateNSView`, so callbacks always target the note
+        /// that is currently on screen rather than the one that was there when the
+        /// coordinator was created.
         var parent: RichTextEditor
+        var loadedContentID: UUID?
         var lastLoadedRTF: Data?
         var isProgrammaticUpdate = false
 
@@ -39,29 +62,27 @@ struct RichTextEditor: NSViewRepresentable {
         }
 
         func textDidChange(_ notification: Notification) {
-            if isProgrammaticUpdate {
-                return
-            }
+            guard !isProgrammaticUpdate,
+                  let textView = notification.object as? NSTextView else { return }
 
-            if let textView = notification.object as? NSTextView {
-                // Inline markdown: turn **text** into real formatting as you type.
-                isProgrammaticUpdate = true
-                applyInlineMarkdown(textView)
-                isProgrammaticUpdate = false
+            // Inline markdown: turn **text** into real formatting as you type.
+            isProgrammaticUpdate = true
+            applyInlineMarkdown(textView)
+            isProgrammaticUpdate = false
 
-                parent.text = textView.string
+            let plain = textView.string
+            let attributed = textView.attributedString()
+            let rtfData = try? attributed.data(
+                from: NSRange(location: 0, length: attributed.length),
+                documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
+            )
 
-                // Save attributed text as RTF
-                if let rtfData = try? textView.attributedString().data(
-                    from: NSRange(location: 0, length: textView.attributedString().length),
-                    documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-                ) {
-                    parent.onAttributedChange(rtfData)
-                }
+            // The text view already *is* this content, so when it comes back around
+            // through the store don't reload (and reset the caret) over it.
+            lastLoadedRTF = rtfData
 
-                parent.onTextChange()
-                updateLinkPreviews()
-            }
+            parent.onChange(plain, rtfData)
+            updateLinkPreviews()
         }
 
         // MARK: - Inline Link Previews
@@ -128,6 +149,13 @@ struct RichTextEditor: NSViewRepresentable {
             }
         }
 
+        /// Removes every preview card. Used when the document is swapped out.
+        func clearLinkPreviews() {
+            previewHosts.values.forEach { $0.removeFromSuperview() }
+            previewHosts.removeAll()
+            previewItems.removeAll()
+        }
+
         /// Adds `reservedSpacing` after link paragraphs and clears it elsewhere.
         /// Only mutates when a value actually differs, so it can't loop via layout.
         private func adjustParagraphSpacing(storage: NSTextStorage, fullLength: Int, linkParagraphs: [NSRange]) {
@@ -157,10 +185,14 @@ struct RichTextEditor: NSViewRepresentable {
             storage.beginEditing()
             for (range, spacing) in changes {
                 guard range.location < fullLength else { continue }
-                let base = (storage.attribute(.paragraphStyle, at: range.location, effectiveRange: nil) as? NSParagraphStyle) ?? .default
+                let clamped = NSRange(
+                    location: range.location,
+                    length: min(range.length, fullLength - range.location)
+                )
+                let base = (storage.attribute(.paragraphStyle, at: clamped.location, effectiveRange: nil) as? NSParagraphStyle) ?? .default
                 let mutable = (base.mutableCopy() as? NSMutableParagraphStyle) ?? NSMutableParagraphStyle()
                 mutable.paragraphSpacing = spacing
-                storage.addAttribute(.paragraphStyle, value: mutable, range: range)
+                storage.addAttribute(.paragraphStyle, value: mutable, range: clamped)
             }
             storage.endEditing()
         }
@@ -202,7 +234,7 @@ struct RichTextEditor: NSViewRepresentable {
             let fullRange = match.range
             let inner = (prefix as NSString).substring(with: match.range(at: 1))
 
-            let baseFont = (textView.typingAttributes[.font] as? NSFont) ?? NSFont.systemFont(ofSize: 15)
+            let baseFont = (textView.typingAttributes[.font] as? NSFont) ?? RichTextEditor.defaultFont
             let traited = baseFont.fontDescriptor.symbolicTraits.union(.bold)
             let newFont = NSFont(descriptor: baseFont.fontDescriptor.withSymbolicTraits(traited), size: baseFont.pointSize) ?? baseFont
 
@@ -224,11 +256,11 @@ struct RichTextEditor: NSViewRepresentable {
             textView.didChangeText()
         }
     }
-    
+
     func makeCoordinator() -> Coordinator {
         Coordinator(self)
     }
-    
+
     func makeNSView(context: Context) -> NSScrollView {
         let scrollView = createScrollView()
         let textView = createTextView()
@@ -253,29 +285,46 @@ struct RichTextEditor: NSViewRepresentable {
             object: textView
         )
 
-        loadAttributedText(textView, context: context)
+        context.coordinator.loadedContentID = contentID
+        context.coordinator.lastLoadedRTF = attributedTextRTF
+        loadDocument(into: textView, coordinator: context.coordinator, resetCaret: true)
         DispatchQueue.main.async { context.coordinator.updateLinkPreviews() }
         return scrollView
     }
 
-    
     func updateNSView(_ nsView: NSScrollView, context: Context) {
-        guard let textView = nsView.documentView as? NSTextView else {
+        // Keep the coordinator's view of the world current — without this, every
+        // AppKit callback would write into whatever note was showing when the
+        // coordinator was first created.
+        context.coordinator.parent = self
+
+        guard let textView = nsView.documentView as? NSTextView else { return }
+        let coordinator = context.coordinator
+
+        // A different note is being shown: replace the whole document.
+        if coordinator.loadedContentID != contentID {
+            coordinator.loadedContentID = contentID
+            coordinator.lastLoadedRTF = attributedTextRTF
+            coordinator.clearLinkPreviews()
+            loadDocument(into: textView, coordinator: coordinator, resetCaret: true)
+            DispatchQueue.main.async { coordinator.updateLinkPreviews() }
             return
         }
-        
-        let rtfChanged = context.coordinator.lastLoadedRTF != attributedTextRTF
-        guard rtfChanged else {
-            return
-        }
-        
-        context.coordinator.lastLoadedRTF = attributedTextRTF
-        updateTextViewContent(textView, context: context)
-        DispatchQueue.main.async { context.coordinator.updateLinkPreviews() }
+
+        // Same note, but its content changed somewhere else (a floating window, a
+        // restored version, an import). Plain text is compared too, so a note
+        // without RTF still refreshes.
+        let rtfChanged = coordinator.lastLoadedRTF != attributedTextRTF
+        let plainChanged = textView.string != text
+        guard rtfChanged || plainChanged else { return }
+
+        coordinator.lastLoadedRTF = attributedTextRTF
+        loadDocument(into: textView, coordinator: coordinator, resetCaret: false)
+        DispatchQueue.main.async { coordinator.updateLinkPreviews() }
     }
 
     // MARK: - Private Methods
-    
+
     private func createScrollView() -> NSScrollView {
         let scrollView = NSScrollView()
         scrollView.hasVerticalScroller = true
@@ -288,23 +337,21 @@ struct RichTextEditor: NSViewRepresentable {
         return scrollView
     }
 
-    
     private func createTextView() -> NSTextView {
         let textView = DropNoteTextView()
         textView.isEditable = true
         textView.isSelectable = true
-        textView.string = text
-        textView.font = NSFont.systemFont(ofSize: 15)
+        textView.font = Self.defaultFont
         textView.textColor = .labelColor
         textView.backgroundColor = NSColor.clear
         textView.drawsBackground = false
-        
+
         // Proper configuration for top alignment
         textView.textContainerInset = NSSize(width: 12, height: 8)
         textView.isVerticallyResizable = true
         textView.isHorizontallyResizable = false
         textView.autoresizingMask = .width
-        
+
         // Rich text support
         textView.isRichText = true
         textView.allowsUndo = true
@@ -315,80 +362,60 @@ struct RichTextEditor: NSViewRepresentable {
 
         return textView
     }
-    
-    private func loadAttributedText(_ textView: NSTextView, context: Context) {
-        guard let rtfData = attributedTextRTF else {
-            return
+
+    /// Replaces the text view's content with this note's content.
+    ///
+    /// `resetCaret` is true when a *different* note is loaded (start at the top);
+    /// false for an external update to the same note, where the caret is kept and
+    /// clamped to the new length.
+    private func loadDocument(into textView: NSTextView, coordinator: Coordinator, resetCaret: Bool) {
+        let previousRanges = textView.selectedRanges
+
+        coordinator.isProgrammaticUpdate = true
+        defer { coordinator.isProgrammaticUpdate = false }
+
+        if let rtfData = attributedTextRTF, let attributed = Self.attributedString(from: rtfData) {
+            textView.textStorage?.setAttributedString(attributed)
+        } else {
+            // No rich text: render plain text with the editor's default styling, so
+            // formatting from a previously shown note can't bleed in.
+            textView.textStorage?.setAttributedString(
+                NSAttributedString(string: text, attributes: Self.defaultAttributes)
+            )
         }
 
-        let selectedRanges = textView.selectedRanges
+        textView.typingAttributes = Self.defaultAttributes
+        detectAndStyleURLs(in: textView)
 
-        if let cachedString = Self.rtfCache.object(forKey: rtfData as NSData) {
-            context.coordinator.isProgrammaticUpdate = true
-            textView.textStorage?.setAttributedString(cachedString)
-            detectAndStyleURLs(in: textView)
-            context.coordinator.isProgrammaticUpdate = false
-        } else if let attributedString = try? NSAttributedString(
+        let length = (textView.string as NSString).length
+        if resetCaret {
+            textView.setSelectedRange(NSRange(location: 0, length: 0))
+            textView.scroll(.zero)
+            // A different document is loaded: an undo from here must not paste the
+            // previous note's text into this one.
+            textView.undoManager?.removeAllActions()
+        } else {
+            // Keep the caret, but never outside the new text.
+            let clamped = previousRanges.compactMap { value -> NSValue? in
+                let range = value.rangeValue
+                let location = min(range.location, length)
+                return NSValue(range: NSRange(location: location, length: min(range.length, length - location)))
+            }
+            textView.selectedRanges = clamped.isEmpty
+                ? [NSValue(range: NSRange(location: length, length: 0))]
+                : clamped
+        }
+    }
+
+    private static func attributedString(from rtfData: Data) -> NSAttributedString? {
+        if let cached = rtfCache.object(forKey: rtfData as NSData) { return cached }
+        guard let decoded = try? NSAttributedString(
             data: rtfData,
             options: [.documentType: NSAttributedString.DocumentType.rtf],
             documentAttributes: nil
-        ) {
-            context.coordinator.isProgrammaticUpdate = true
-            textView.textStorage?.setAttributedString(attributedString)
-            detectAndStyleURLs(in: textView)
-            context.coordinator.isProgrammaticUpdate = false
-            Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData, cost: rtfData.count)
-        }
-        textView.selectedRanges = selectedRanges
-        context.coordinator.lastLoadedRTF = rtfData
-    }
-
-    private func updateTextViewContent(_ textView: NSTextView, context: Context) {
-        let currentText = text
-
-        // Update visible text immediately so note switching feels instant.
-        if textView.string != currentText {
-            context.coordinator.isProgrammaticUpdate = true
-            textView.string = currentText
-            context.coordinator.isProgrammaticUpdate = false
-        }
-
-        guard let rtfData = attributedTextRTF else {
-            return
-        }
-
-        let selectedRanges = textView.selectedRanges
-
-        if let cachedString = Self.rtfCache.object(forKey: rtfData as NSData) {
-            context.coordinator.isProgrammaticUpdate = true
-            textView.textStorage?.setAttributedString(cachedString)
-            detectAndStyleURLs(in: textView)
-            context.coordinator.isProgrammaticUpdate = false
-            textView.selectedRanges = selectedRanges
-            return
-        }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            guard let attributedString = try? NSAttributedString(
-                data: rtfData,
-                options: [.documentType: NSAttributedString.DocumentType.rtf],
-                documentAttributes: nil
-            ) else {
-                return
-            }
-
-            Self.rtfCache.setObject(attributedString, forKey: rtfData as NSData, cost: rtfData.count)
-
-            DispatchQueue.main.async {
-                if context.coordinator.lastLoadedRTF == rtfData {
-                    context.coordinator.isProgrammaticUpdate = true
-                    textView.textStorage?.setAttributedString(attributedString)
-                    self.detectAndStyleURLs(in: textView)
-                    context.coordinator.isProgrammaticUpdate = false
-                    textView.selectedRanges = selectedRanges
-                }
-            }
-        }
+        ) else { return nil }
+        rtfCache.setObject(decoded, forKey: rtfData as NSData, cost: rtfData.count)
+        return decoded
     }
 
     private func detectAndStyleURLs(in textView: NSTextView) {
@@ -441,6 +468,7 @@ private final class DropNoteTextView: NSTextView {
             return
         }
         let range = selectedRange
+        guard shouldChangeText(in: range, replacementString: plain) else { return }
         let insertion = NSAttributedString(string: plain, attributes: typingAttributes)
         textStorage?.replaceCharacters(in: range, with: insertion)
         setSelectedRange(NSRange(location: range.location + (plain as NSString).length, length: 0))

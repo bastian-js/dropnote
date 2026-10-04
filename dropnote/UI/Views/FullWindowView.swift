@@ -15,7 +15,8 @@ enum FullWindowSelection: Equatable {
 struct FullWindowView: View {
     @Environment(\.colorScheme) private var colorScheme
     @ObservedObject private var todoService = TodoFileService.shared
-    @State private var notes: [Note] = []
+    /// Same store the popover uses — that's what keeps the two windows in sync.
+    @ObservedObject private var store = NotesStore.shared
     @State private var selection: FullWindowSelection = .todos
     @State private var sidebarExpanded: Bool
     @State private var unlockedNoteIDs: Set<UUID> = []
@@ -23,10 +24,7 @@ struct FullWindowView: View {
     @State private var showWordCounter: Bool
     @State private var showDeleteAlert = false
     @State private var pendingDeleteId: UUID? = nil
-    @State private var pendingSaveWorkItem: DispatchWorkItem?
     @State private var expiryNoteID: UUID?
-
-    private let notesService = NotesFileService.shared
 
     init() {
         let s = SettingsService.shared.settings
@@ -35,9 +33,12 @@ struct FullWindowView: View {
         _showWordCounter = State(initialValue: s.showWordCounter)
     }
 
-    private var selectedNoteIndex: Int? {
-        guard case .note(let id) = selection else { return nil }
-        return notes.firstIndex { $0.id == id }
+    private var notes: [Note] { store.notes }
+
+    /// The selected note, or nil once it has been deleted elsewhere.
+    private var selectedNoteID: UUID? {
+        guard case .note(let id) = selection, store.contains(id) else { return nil }
+        return id
     }
 
     private var pendingTodosCount: Int {
@@ -67,16 +68,12 @@ struct FullWindowView: View {
             // Sidebar
             if sidebarExpanded {
                 FullWindowSidebar(
-                    notes: $notes,
+                    notes: notes,
                     selection: $selection,
                     pendingTodosCount: pendingTodosCount,
                     onAddNote: addNote,
                     onDeleteNote: { id in pendingDeleteId = id; showDeleteAlert = true },
-                    onTogglePin: { id in
-                        guard let i = notes.firstIndex(where: { $0.id == id }) else { return }
-                        notes[i].isPinned.toggle()
-                        scheduleSave()
-                    },
+                    onTogglePin: { id in store.togglePin(id: id) },
                     onOpenSettings: { SettingsWindowController.shared.show() },
                     onCollapse: {
                         withAnimation(.spring(response: 0.28, dampingFraction: 0.85)) {
@@ -84,13 +81,13 @@ struct FullWindowView: View {
                         }
                         persistSidebar(false)
                     },
-                    onMoveNote: moveNote,
+                    onMoveNote: { from, to in store.move(id: from, toPositionOf: to) },
                     onFloatNote: { id in
-                        if let note = notes.first(where: { $0.id == id }) {
+                        if let note = store.note(id) {
                             FloatingNoteWindowController.shared.show(note: note)
                         }
                     },
-                    onSetExpiry: { id, date in setExpiry(noteId: id, date: date) },
+                    onSetExpiry: { id, date in store.setExpiry(date, id: id) },
                     onRequestCustomExpiry: { id in expiryNoteID = id }
                 )
                 .frame(width: 240)
@@ -130,19 +127,23 @@ struct FullWindowView: View {
         .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NewNoteRequested"))) { _ in
             addNote()
         }
-        .onReceive(NotificationCenter.default.publisher(for: ExpiryManager.notesReloadRequested)) { _ in
-            reloadNotesFromDisk()
+        // The selected note can disappear from under us (expiry, or a delete in
+        // the popover). Fall back instead of showing a stale selection.
+        .onChange(of: store.notes.map(\.id)) { _, _ in
+            if case .note(let id) = selection, !store.contains(id) {
+                selection = store.notes.first.map { .note($0.id) } ?? .todos
+            }
         }
         .sheet(isPresented: Binding(
             get: { expiryNoteID != nil },
             set: { if !$0 { expiryNoteID = nil } }
         )) {
-            if let id = expiryNoteID, let idx = notes.firstIndex(where: { $0.id == id }) {
+            if let id = expiryNoteID, let note = store.note(id) {
                 ExpiryPickerView(
-                    noteTitle: notes[idx].title,
-                    initialDate: notes[idx].expiryDate,
+                    noteTitle: note.title,
+                    initialDate: note.expiryDate,
                     onSet: { date in
-                        setExpiry(noteId: id, date: date)
+                        store.setExpiry(date, id: id)
                         expiryNoteID = nil
                     },
                     onCancel: { expiryNoteID = nil }
@@ -186,14 +187,14 @@ struct FullWindowView: View {
                 Spacer()
 
             case .note(let id):
-                if let idx = notes.firstIndex(where: { $0.id == id }) {
-                    TextField("Note title", text: $notes[idx].title)
+                if let note = store.note(id) {
+                    // Title binding resolves the note by id on every read/write,
+                    // so renaming can't land on the wrong note.
+                    TextField("Note title", text: store.titleBinding(for: id))
                         .textFieldStyle(.plain)
                         .font(.system(.title2, design: .rounded).weight(.semibold))
-                        .onSubmit { scheduleSave() }
-                        .onChange(of: notes[idx].title) { _, _ in scheduleSave() }
                     Spacer()
-                    if let lastModified = notes[idx].lastModified {
+                    if let lastModified = note.lastModified {
                         Text(DateFormattingHelper.formatDate(lastModified))
                             .font(.system(size: 11))
                             .foregroundColor(.secondary.opacity(0.55))
@@ -220,18 +221,16 @@ struct FullWindowView: View {
             transcriptionArea
 
         case .note:
-            if let idx = selectedNoteIndex {
+            if let id = selectedNoteID {
                 FullWindowEditor(
-                    notes: $notes,
-                    noteIndex: idx,
+                    noteID: id,
                     unlockedNoteIDs: $unlockedNoteIDs,
                     showWordCounter: showWordCounter,
-                    onSave: scheduleSave,
                     onAddNote: addNote,
-                    onDelete: { pendingDeleteId = notes[idx].id; showDeleteAlert = true },
-                    onTogglePin: { togglePin(noteId: notes[idx].id) },
-                    onToggleLock: { toggleLock(noteId: notes[idx].id) },
-                    onUnlock: { unlockNote(noteId: notes[idx].id) }
+                    onDelete: { pendingDeleteId = id; showDeleteAlert = true },
+                    onTogglePin: { store.togglePin(id: id) },
+                    onToggleLock: { toggleLock(noteId: id) },
+                    onUnlock: { unlockNote(noteId: id) }
                 )
             } else {
                 emptyNoteState
@@ -246,13 +245,8 @@ struct FullWindowView: View {
         HStack(alignment: .top, spacing: 0) {
             Spacer(minLength: 40)
             TranscriptionView(onSaveAsNote: { text in
-                addNote()
-                if let last = notes.last {
-                    if let i = notes.firstIndex(where: { $0.id == last.id }) {
-                        notes[i].text = text
-                        scheduleSave()
-                    }
-                }
+                let note = store.addNote(text: text)
+                selection = .note(note.id)
             })
             .padding(.vertical, 20)
             .frame(maxWidth: 700, maxHeight: .infinity)
@@ -302,107 +296,62 @@ struct FullWindowView: View {
     // MARK: - Data
 
     private func loadData() {
-        DispatchQueue.global(qos: .userInitiated).async {
-            let loadedNotes = notesService.loadNotes() ?? []
-            DispatchQueue.main.async {
-                self.notes = loadedNotes
-                if let first = loadedNotes.first {
-                    self.selection = .note(first.id)
-                }
-            }
-        }
+        store.loadIfNeeded()
+        // Select something sensible once the notes are there.
+        if case .note(let id) = selection, store.contains(id) { return }
+        if let first = store.notes.first { selection = .note(first.id) }
     }
 
     // MARK: - Note Actions
 
     private func addNote() {
-        let next = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? (notes.count + 1)
-        var note = Note(title: "Note \(next)", text: "")
-        note.updateModifiedDate()
+        let note = store.addNote()
         withAnimation {
-            notes.append(note)
             selection = .note(note.id)
         }
-        scheduleSave()
     }
 
     private func deleteNote(noteId: UUID) {
-        notes.removeAll { $0.id == noteId }
-        if case .note(let id) = selection, id == noteId {
-            selection = notes.first.map { .note($0.id) } ?? .todos
-        }
-        scheduleSave()
-        NoteSearchService.shared.indexNotes(with: notes)
-    }
+        let index = store.index(of: noteId)
+        store.delete(id: noteId)
+        unlockedNoteIDs.remove(noteId)
 
-    private func togglePin(noteId: UUID) {
-        guard let i = notes.firstIndex(where: { $0.id == noteId }) else { return }
-        let wasPinned = notes[i].isPinned
-        notes[i].isPinned.toggle()
-        if !wasPinned {
-            notes.move(fromOffsets: IndexSet(integer: i), toOffset: 0)
+        if case .note(let id) = selection, id == noteId {
+            if let index, !store.notes.isEmpty {
+                selection = .note(store.notes[min(index, store.notes.count - 1)].id)
+            } else {
+                selection = store.notes.first.map { .note($0.id) } ?? .todos
+            }
         }
-        scheduleSave()
     }
 
     private func toggleLock(noteId: UUID) {
-        guard let i = notes.firstIndex(where: { $0.id == noteId }) else { return }
-        let note = notes[i]
+        guard let note = store.note(noteId) else { return }
         if note.isLocked {
             Task { @MainActor in
                 let ok = await AuthenticationService.shared.authenticate(reason: "Remove lock from \"\(note.title)\"")
-                if ok { notes[i].isLocked = false; unlockedNoteIDs.remove(note.id); scheduleSave() }
+                if ok {
+                    store.setLocked(false, id: noteId)
+                    unlockedNoteIDs.remove(noteId)
+                }
             }
         } else {
             Task { @MainActor in
                 let ok = await AuthenticationService.shared.ensurePasswordOrBiometricsConfigured()
-                if ok { notes[i].isLocked = true; unlockedNoteIDs.remove(note.id); scheduleSave() }
+                if ok {
+                    store.setLocked(true, id: noteId)
+                    unlockedNoteIDs.remove(noteId)
+                }
             }
         }
     }
 
     private func unlockNote(noteId: UUID) {
-        guard let i = notes.firstIndex(where: { $0.id == noteId }) else { return }
-        let note = notes[i]
+        guard let note = store.note(noteId) else { return }
         Task { @MainActor in
             let ok = await AuthenticationService.shared.authenticate(reason: "Unlock \"\(note.title)\"")
-            if ok { unlockedNoteIDs.insert(note.id) }
+            if ok { unlockedNoteIDs.insert(noteId) }
         }
-    }
-
-    private func moveNote(from: Int, to: Int) {
-        notes.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-        scheduleSave()
-    }
-
-    private func setExpiry(noteId: UUID, date: Date?) {
-        guard let i = notes.firstIndex(where: { $0.id == noteId }) else { return }
-        notes[i].expiryDate = date
-        scheduleSave()
-    }
-
-    private func reloadNotesFromDisk() {
-        guard let loaded = notesService.loadNotes() else { return }
-        notes = loaded
-        if case .note(let id) = selection, !loaded.contains(where: { $0.id == id }) {
-            selection = loaded.first.map { .note($0.id) } ?? .todos
-        }
-    }
-
-    private func scheduleSave() {
-        if let idx = selectedNoteIndex {
-            notes[idx].captureVersionIfNeeded()
-        }
-        let snapshot = notes
-        pendingSaveWorkItem?.cancel()
-        let work = DispatchWorkItem {
-            DispatchQueue.global(qos: .utility).async {
-                self.notesService.saveNotes(snapshot)
-                DispatchQueue.main.async { NoteSearchService.shared.indexNotes(with: snapshot) }
-            }
-        }
-        pendingSaveWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
     }
 
     private func persistSidebar(_ expanded: Bool) {
@@ -424,7 +373,7 @@ struct FullWindowView: View {
 
 struct FullWindowSidebar: View {
     @Environment(\.colorScheme) private var colorScheme
-    @Binding var notes: [Note]
+    let notes: [Note]
     @Binding var selection: FullWindowSelection
     let pendingTodosCount: Int
 
@@ -433,7 +382,8 @@ struct FullWindowSidebar: View {
     let onTogglePin: (UUID) -> Void
     let onOpenSettings: () -> Void
     let onCollapse: () -> Void
-    var onMoveNote: ((Int, Int) -> Void)? = nil
+    /// Reorder by identity: move the first note into the second note's slot.
+    var onMoveNote: ((UUID, UUID) -> Void)? = nil
     var onFloatNote: ((UUID) -> Void)? = nil
     var onSetExpiry: ((UUID, Date?) -> Void)? = nil
     var onRequestCustomExpiry: ((UUID) -> Void)? = nil
@@ -461,9 +411,8 @@ struct FullWindowSidebar: View {
                                     return NSItemProvider(object: note.id.uuidString as NSString)
                                 }
                                 .onDrop(of: ["public.text"], delegate: SidebarDropDelegate(
-                                    targetNote: note,
+                                    targetNoteID: note.id,
                                     draggingNoteID: $draggingNoteID,
-                                    notes: $notes,
                                     onMove: onMoveNote
                                 ))
                         }
@@ -725,52 +674,21 @@ struct FullWindowSidebar: View {
 // MARK: - FullWindowEditor
 
 struct FullWindowEditor: View {
-    @Binding var notes: [Note]
-    let noteIndex: Int
+    let noteID: UUID
     @Binding var unlockedNoteIDs: Set<UUID>
     let showWordCounter: Bool
-    let onSave: () -> Void
     let onAddNote: () -> Void
     let onDelete: () -> Void
     let onTogglePin: () -> Void
     let onToggleLock: () -> Void
     let onUnlock: () -> Void
 
-    @State private var localShowWordCounter: Bool
-
-    init(
-        notes: Binding<[Note]>,
-        noteIndex: Int,
-        unlockedNoteIDs: Binding<Set<UUID>>,
-        showWordCounter: Bool,
-        onSave: @escaping () -> Void,
-        onAddNote: @escaping () -> Void,
-        onDelete: @escaping () -> Void,
-        onTogglePin: @escaping () -> Void,
-        onToggleLock: @escaping () -> Void,
-        onUnlock: @escaping () -> Void
-    ) {
-        self._notes = notes
-        self.noteIndex = noteIndex
-        self._unlockedNoteIDs = unlockedNoteIDs
-        self.showWordCounter = showWordCounter
-        self.onSave = onSave
-        self.onAddNote = onAddNote
-        self.onDelete = onDelete
-        self.onTogglePin = onTogglePin
-        self.onToggleLock = onToggleLock
-        self.onUnlock = onUnlock
-        self._localShowWordCounter = State(initialValue: showWordCounter)
-    }
-
     var body: some View {
         VStack(spacing: 0) {
             NoteEditor(
-                noteIndex: noteIndex,
-                notes: $notes,
+                noteID: noteID,
                 unlockedNoteIDs: $unlockedNoteIDs,
-                showWordCounter: $localShowWordCounter,
-                onSave: onSave,
+                showWordCounter: showWordCounter,
                 onUnlock: { _ in onUnlock() },
                 onToggleLock: { _ in onToggleLock() }
             )
@@ -779,38 +697,31 @@ struct FullWindowEditor: View {
             .padding(.bottom, 16)
 
             EditorToolbar(
-                noteIndex: noteIndex,
-                notes: $notes,
+                noteID: noteID,
                 onRequestDelete: { _ in onDelete() },
                 onRequestAddNote: onAddNote,
                 onRequestTogglePin: { _ in onTogglePin() },
-                onRequestToggleLock: { _ in onToggleLock() },
-                onSave: onSave
+                onRequestToggleLock: { _ in onToggleLock() }
             )
             .padding(.horizontal, 48)
             .padding(.top, 8)
             .padding(.bottom, 16)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .onChange(of: showWordCounter) { _, newVal in localShowWordCounter = newVal }
     }
 }
 
 // MARK: - SidebarDropDelegate
 
 private struct SidebarDropDelegate: DropDelegate {
-    let targetNote: Note
+    let targetNoteID: UUID
     @Binding var draggingNoteID: UUID?
-    @Binding var notes: [Note]
-    let onMove: ((Int, Int) -> Void)?
+    let onMove: ((UUID, UUID) -> Void)?
 
     func dropEntered(info: DropInfo) {
-        guard let dragID = draggingNoteID,
-              let fromIdx = notes.firstIndex(where: { $0.id == dragID }),
-              let toIdx = notes.firstIndex(where: { $0.id == targetNote.id }),
-              fromIdx != toIdx else { return }
+        guard let dragID = draggingNoteID, dragID != targetNoteID else { return }
         withAnimation(.spring(response: 0.25, dampingFraction: 0.85)) {
-            onMove?(fromIdx, toIdx)
+            onMove?(dragID, targetNoteID)
         }
     }
 

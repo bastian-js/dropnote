@@ -26,7 +26,7 @@ final class NoteSearchService: ObservableObject {
     }
     
     func search(query: String, limit: Int = 10) -> [SearchResult] {
-        let notesSnapshot = loadIndexedNotesFromDisk()
+        let notesSnapshot = currentIndex()
 
         let trimmedQuery = query.trimmingCharacters(in: .whitespacesAndNewlines)
         
@@ -201,6 +201,15 @@ final class NoteSearchService: ObservableObject {
                 isLocked: note.isLocked
             )
         }
+    }
+
+    /// The notes to search over. Prefers the live store — reading `notes.json`
+    /// instead would miss everything typed since the last debounced save.
+    private func currentIndex() -> [IndexedNote] {
+        if Thread.isMainThread, NotesStore.shared.isLoaded {
+            return Self.mapNotes(NotesStore.shared.notes)
+        }
+        return loadIndexedNotesFromDisk()
     }
 
     private func loadIndexedNotesFromDisk() -> [IndexedNote] {

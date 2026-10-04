@@ -1,25 +1,23 @@
 import SwiftUI
 
-/// A small, always-on-top, editable copy of a note that lives outside the popover.
-/// Edits are persisted straight to disk and broadcast so the popover / full window
-/// stay in sync.
+/// A small, always-on-top, editable view of a note that lives outside the popover.
+///
+/// It is not a copy: it reads and writes the shared `NotesStore`, so edits show up
+/// in the popover and the full window as they are typed.
 struct FloatingNoteView: View {
     let noteID: UUID
-    @State private var title: String
-    @State private var text: String
-    @State private var rtf: Data?
+    @ObservedObject private var store = NotesStore.shared
 
     let onClose: () -> Void
 
     @State private var windowOpacity: Double = 0.95
     @State private var isHoveringClose = false
-    @State private var saveWork: DispatchWorkItem?
+
+    private var note: Note? { store.note(noteID) }
+    private var title: String { note?.title ?? "" }
 
     init(note: Note, onClose: @escaping () -> Void) {
         self.noteID = note.id
-        _title = State(initialValue: note.title)
-        _text = State(initialValue: note.text)
-        _rtf = State(initialValue: note.attributedTextRTF)
         self.onClose = onClose
     }
 
@@ -101,44 +99,32 @@ struct FloatingNoteView: View {
 
     @ViewBuilder
     private var noteContent: some View {
-        RichTextEditor(
-            text: $text,
-            attributedTextRTF: rtf,
-            onTextChange: scheduleSave,
-            onAttributedChange: { newRTF in
-                rtf = newRTF
-                scheduleSave()
+        if let note {
+            RichTextEditor(
+                contentID: note.id,
+                text: note.text,
+                attributedTextRTF: note.attributedTextRTF,
+                onChange: { text, rtf in
+                    store.updateContent(id: noteID, text: text, rtf: rtf)
+                }
+            )
+            .frame(minWidth: 200, minHeight: 120)
+        } else {
+            // The note was deleted or self-destructed while floating.
+            VStack(spacing: 8) {
+                Image(systemName: "trash")
+                    .font(.system(size: 20))
+                    .foregroundColor(.secondary.opacity(0.5))
+                Text("This note no longer exists.")
+                    .font(.system(size: 12))
+                    .foregroundColor(.secondary)
+                Button("Close", action: onClose)
+                    .buttonStyle(.plain)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundColor(.accentColor)
             }
-        )
-        .frame(minWidth: 200, minHeight: 120)
-    }
-
-    // MARK: - Persistence
-
-    private func scheduleSave() {
-        saveWork?.cancel()
-        let snapshotText = text
-        let snapshotRTF = rtf
-        let work = DispatchWorkItem {
-            persist(text: snapshotText, rtf: snapshotRTF)
-        }
-        saveWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
-    }
-
-    private func persist(text: String, rtf: Data?) {
-        DispatchQueue.global(qos: .utility).async {
-            guard var notes = NotesFileService.shared.loadNotes(),
-                  let idx = notes.firstIndex(where: { $0.id == noteID }) else { return }
-            notes[idx].text = text
-            notes[idx].attributedTextRTF = rtf
-            notes[idx].updateModifiedDate()
-            notes[idx].captureVersionIfNeeded()
-            NotesFileService.shared.saveNotes(notes)
-            DispatchQueue.main.async {
-                NoteSearchService.shared.indexNotes(with: notes)
-                NotificationCenter.default.post(name: ExpiryManager.notesReloadRequested, object: nil)
-            }
+            .frame(minWidth: 200, minHeight: 120)
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
         }
     }
 }

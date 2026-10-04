@@ -1,28 +1,34 @@
 import SwiftUI
 import AppKit
 
+/// Edits one note, identified by id.
+///
+/// It reads the note out of `NotesStore` on every render instead of holding an
+/// index into a notes array, so adding, deleting, pinning or reordering notes can
+/// never leave it pointing at the wrong note (or past the end of the array).
 struct NoteEditor: View {
-    let noteIndex: Int
-    @Binding var notes: [Note]
+    let noteID: UUID
+    @ObservedObject var store: NotesStore = .shared
     @Binding var unlockedNoteIDs: Set<UUID>
-    @Binding var showWordCounter: Bool
-    
-    var onSave: () -> Void
-    var onUnlock: (Int) -> Void
-    var onToggleLock: (Int) -> Void
+    let showWordCounter: Bool
+
+    var onUnlock: (UUID) -> Void
+    var onToggleLock: (UUID) -> Void
 
     // Unlock reveal animation. `displayLocked` lags behind `isNoteLocked` so the
     // locked screen stays visible while the padlock opens in place, then reveals.
     @State private var displayLocked: Bool? = nil
     @State private var lockOpen = false
 
+    private var note: Note? { store.note(noteID) }
+
     var body: some View {
         VStack(spacing: 0) {
-            if noteIndex < notes.count {
+            if let note {
                 if displayLocked ?? isNoteLocked {
                     lockedView
                 } else {
-                    unlockedContent
+                    unlockedContent(note: note)
                 }
             }
         }
@@ -37,14 +43,14 @@ struct NoteEditor: View {
         .onChange(of: isNoteLocked) { _, nowLocked in
             handleLockChange(nowLocked: nowLocked)
         }
-        .onChange(of: noteIndex) { _, _ in
+        .onChange(of: noteID) { _, _ in
             displayLocked = isNoteLocked
             lockOpen = false
         }
     }
 
     @ViewBuilder
-    private var unlockedContent: some View {
+    private func unlockedContent(note: Note) -> some View {
         VStack(spacing: 0) {
             // Toolbar oben zentriert
             HStack {
@@ -60,14 +66,14 @@ struct NoteEditor: View {
             .padding(.horizontal, 12)
             .padding(.vertical, 4)
 
-            // Text Editor
+            // Text Editor — keyed by note id, so switching tabs always swaps the
+            // document and edits always land on the note that is on screen.
             RichTextEditor(
-                text: $notes[noteIndex].text,
-                attributedTextRTF: notes[noteIndex].attributedTextRTF,
-                onTextChange: onSave,
-                onAttributedChange: { rtfData in
-                    notes[noteIndex].attributedTextRTF = rtfData
-                    onSave()
+                contentID: note.id,
+                text: note.text,
+                attributedTextRTF: note.attributedTextRTF,
+                onChange: { text, rtf in
+                    store.updateContent(id: noteID, text: text, rtf: rtf)
                 }
             )
             .padding(.horizontal, 12)
@@ -77,9 +83,10 @@ struct NoteEditor: View {
             // Words Counter unten links
             if showWordCounter {
                 HStack {
-                    Text("Words: \(notes[noteIndex].text.split { $0.isWhitespace || $0.isNewline }.count)")
+                    Text("Words: \(WordCount.count(in: note))")
                         .font(.footnote)
                         .foregroundColor(.secondary)
+                        .monospacedDigit()
                     Spacer()
                 }
                 .padding(.horizontal, 12)
@@ -112,7 +119,7 @@ struct NoteEditor: View {
     private var lockedView: some View {
         VStack(spacing: 20) {
             Spacer()
-            
+
             // Custom padlock icon — opens in place when the note is unlocked.
             ZStack {
                 Circle()
@@ -122,12 +129,12 @@ struct NoteEditor: View {
                     .scaleEffect(lockOpen ? 1.05 : 1.0)
                 PadlockIcon(isOpen: lockOpen)
             }
-            
+
             // Locked Text
             VStack(spacing: 8) {
                 Text("This note is locked")
                     .font(.system(size: 18, weight: .semibold))
-                
+
                 Text("Unlock with your password or Touch ID.")
                     .font(.system(size: 13, weight: .regular))
                     .foregroundColor(.secondary)
@@ -136,12 +143,12 @@ struct NoteEditor: View {
                     .frame(maxWidth: .infinity)
             }
             .padding(.horizontal, 24)
-            
+
             Spacer()
-            
+
             // Unlock Button
             Button {
-                onUnlock(noteIndex)
+                onUnlock(noteID)
             } label: {
                 HStack(spacing: 8) {
                     Image(systemName: "lock.open.fill")
@@ -160,33 +167,34 @@ struct NoteEditor: View {
             .buttonStyle(PlainButtonStyle())
             .keyboardShortcut(.defaultAction)
             .padding(.horizontal, 20)
-            
+
             Spacer()
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
     }
-    
+
     // MARK: - Computed Properties
-    
+
     private var isNoteLocked: Bool {
-        notes[noteIndex].isLocked && !unlockedNoteIDs.contains(notes[noteIndex].id)
+        guard let note else { return false }
+        return note.isLocked && !unlockedNoteIDs.contains(note.id)
     }
-    
+
     // MARK: - Private Methods
-    
+
     private func applyBoldFormatting() {
         applyFormatting { textView in
             TextFormattingHelper.toggleFontTrait(.bold, in: textView)
         }
     }
-    
+
     private func applyItalicFormatting() {
         applyFormatting { textView in
             TextFormattingHelper.toggleFontTrait(.italic, in: textView)
         }
     }
-    
+
     private func applyUnderlineFormatting() {
         applyFormatting { textView in
             TextFormattingHelper.toggleUnderline(in: textView)
@@ -194,9 +202,7 @@ struct NoteEditor: View {
     }
 
     private func applyFormatting(_ action: (NSTextView) -> Void) {
-        guard let textView = NSTextView.findInWindow(NSApplication.shared.keyWindow ?? NSWindow()) else {
-            return
-        }
+        guard store.contains(noteID), let textView = NSTextView.focused else { return }
 
         let selectedRanges = textView.selectedRanges
         action(textView)
@@ -207,16 +213,14 @@ struct NoteEditor: View {
             textView.window?.makeFirstResponder(textView)
         }
     }
-    
+
     private func updateNoteFromTextView(_ textView: NSTextView) {
-        notes[noteIndex].text = textView.string
-        if let rtfData = try? textView.attributedString().data(
-            from: NSRange(location: 0, length: textView.attributedString().length),
+        let attributed = textView.attributedString()
+        let rtf = try? attributed.data(
+            from: NSRange(location: 0, length: attributed.length),
             documentAttributes: [.documentType: NSAttributedString.DocumentType.rtf]
-        ) {
-            notes[noteIndex].attributedTextRTF = rtfData
-        }
-        onSave()
+        )
+        store.updateContent(id: noteID, text: textView.string, rtf: rtf)
     }
 }
 

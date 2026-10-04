@@ -5,16 +5,18 @@ import LocalAuthentication
 struct ContentView: View {
     @StateObject private var searchManager = SearchManager.shared
     @ObservedObject private var todoService = TodoFileService.shared
-    @State private var notes: [Note] = []
-    @State private var selectedTab: Int = 0
-    @State private var isLoadingNotes: Bool = true
+    @ObservedObject private var store = NotesStore.shared
+
+    /// The note shown in the editor. `nil` falls back to the first visible note —
+    /// resolved through `NotesStore`, so it can never point at a deleted note.
+    @State private var selectedNoteID: UUID?
 
     @State private var isEditingTabTitle: Bool = false
     @State private var editedTabTitle: String = ""
     @FocusState private var isTextFieldFocused: Bool
 
     @State private var showDeleteAlert: Bool = false
-    @State private var deleteIndex: Int?
+    @State private var deleteNoteID: UUID?
     @State private var showWordCounter: Bool
 
     @State private var searchText: String = ""
@@ -22,19 +24,12 @@ struct ContentView: View {
     @FocusState private var isSearchFieldFocused: Bool
 
     @State private var showEditorToolbar: Bool
-    @State private var noteIDToOpen: UUID?
     @State private var showSettingsMenu: Bool = false
-
-    @State private var isSaving: Bool = false
-    @State private var lastSavedAt: Date?
-    @State private var pendingSaveWorkItem: DispatchWorkItem?
-    @State private var savingStatusTimer: Timer?
 
     @State private var unlockedNoteIDs: Set<UUID> = []
     @State private var relockWorkItems: [UUID: DispatchWorkItem] = [:]
     @State private var themeMode: String = "system"
     @State private var showSearchRecentNotes: Bool = true
-    @State private var cachedFilteredIndices: [Int] = []
 
     // Todo tab state
     @State private var showTodoTab: Bool
@@ -54,7 +49,6 @@ struct ContentView: View {
 
     @Environment(\.undoManager) private var undoManager
 
-    private let notesService = NotesFileService.shared
     private let settingsService = SettingsService.shared
 
     init() {
@@ -66,8 +60,6 @@ struct ContentView: View {
         _showTodoTabTitle = State(initialValue: settings.showTodoTabTitle)
         _showTranscriptionTab = State(initialValue: settings.showTranscriptionTab)
         _showTranscriptionTabTitle = State(initialValue: settings.showTranscriptionTabTitle)
-        _notes = State(initialValue: [])
-        _isLoadingNotes = State(initialValue: true)
         _popoverSize = State(initialValue: CGSize(width: settings.popoverWidth, height: settings.popoverHeight))
         _popoverSizeLocked = State(initialValue: settings.popoverSizeLocked)
         _showEditorToolbar = State(initialValue: settings.showEditorToolbar)
@@ -78,8 +70,8 @@ struct ContentView: View {
             .appAccent()
             .preferredColorScheme(getColorScheme())
             .onAppear {
-                loadNotesIfNeeded()
-                recomputeFilteredIndices()
+                store.loadIfNeeded()
+                handlePendingNoteSelection()
             }
             .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in
                 guard let appDelegate = AppDelegate.shared else { return }
@@ -93,12 +85,15 @@ struct ContentView: View {
                 handleSearchResultSelection(noteID)
             }
             .onDisappear {
-                saveNotes()
+                store.saveNow()
             }
-            .alert("Delete note?", isPresented: $showDeleteAlert, presenting: deleteIndex) { index in
-                Button("Delete", role: .destructive) { deleteNote(at: index) }
-                Button("Cancel", role: .cancel) {}
-            } message: { _ in
+            .alert("Delete note?", isPresented: $showDeleteAlert) {
+                Button("Delete", role: .destructive) {
+                    if let id = deleteNoteID { deleteNote(id: id) }
+                    deleteNoteID = nil
+                }
+                Button("Cancel", role: .cancel) { deleteNoteID = nil }
+            } message: {
                 Text("This note will be deleted permanently")
             }
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("SettingsChanged"))) { _ in
@@ -120,34 +115,24 @@ struct ContentView: View {
             .onReceive(NotificationCenter.default.publisher(for: Notification.Name("PopoverSizeReset"))) { note in
                 if let size = note.object as? CGSize { popoverSize = size }
             }
-            .onReceive(NotificationCenter.default.publisher(for: Notification.Name("NotesWiped"))) { _ in
-                cachedFilteredIndices = []
-                notes = []
-                selectedTab = 0
-            }
-            .onReceive(NotificationCenter.default.publisher(for: ExpiryManager.notesReloadRequested)) { _ in
-                reloadNotesFromDisk()
-            }
             .sheet(isPresented: Binding(
                 get: { expiryNoteID != nil },
                 set: { if !$0 { expiryNoteID = nil } }
             )) {
-                if let id = expiryNoteID, let idx = notes.firstIndex(where: { $0.id == id }) {
+                if let id = expiryNoteID, let note = store.note(id) {
                     ExpiryPickerView(
-                        noteTitle: notes[idx].title,
-                        initialDate: notes[idx].expiryDate,
+                        noteTitle: note.title,
+                        initialDate: note.expiryDate,
                         onSet: { date in
-                            setExpiry(noteIndex: idx, date: date)
+                            store.setExpiry(date, id: id)
                             expiryNoteID = nil
                         },
                         onCancel: { expiryNoteID = nil }
                     )
                 }
             }
-            .onChange(of: notes) { _, _ in recomputeFilteredIndices() }
-            .onChange(of: searchText) { _, _ in recomputeFilteredIndices() }
             // Selecting a note tab deselects the todo tab
-            .onChange(of: selectedTab) { _, _ in
+            .onChange(of: selectedNoteID) { _, _ in
                 relockOnSwitchIfNeeded()
                 if showingTodoTab { showingTodoTab = false }
                 if showingTranscriptionTab { showingTranscriptionTab = false }
@@ -163,26 +148,28 @@ struct ContentView: View {
 
     @ViewBuilder
     private var mainContent: some View {
-        let currentFilteredIndices = cachedFilteredIndices
-        let currentActiveIndex = activeIndex(from: currentFilteredIndices)
+        let visible = visibleNotes
+        let activeID = activeNoteID(in: visible)
 
         ZStack(alignment: .bottomTrailing) {
             VStack(spacing: 6) {
                 searchBar
                 TabsBar(
-                    notes: $notes,
-                    filteredIndices: currentFilteredIndices,
-                    selectedTab: $selectedTab,
+                    notes: visible,
+                    selectedNoteID: Binding(
+                        get: { activeID },
+                        set: { selectedNoteID = $0 }
+                    ),
                     isEditingTabTitle: $isEditingTabTitle,
                     editedTabTitle: $editedTabTitle,
                     isTextFieldFocused: $isTextFieldFocused,
-                    onRequestDelete: { index in
-                        deleteIndex = index
+                    onRequestDelete: { id in
+                        deleteNoteID = id
                         showDeleteAlert = true
                     },
-                    onPersist: saveNotes,
-                    onRequestTogglePin: { index in togglePin(noteIndex: index) },
-                    onRequestToggleLock: { index in toggleLock(noteIndex: index) },
+                    onRename: { id, title in store.setTitle(title, id: id) },
+                    onRequestTogglePin: { id in store.togglePin(id: id) },
+                    onRequestToggleLock: { id in toggleLock(noteID: id) },
                     showTodoTab: showTodoTab,
                     showTodoTabTitle: showTodoTabTitle,
                     isTodoTabSelected: showingTodoTab,
@@ -193,7 +180,7 @@ struct ContentView: View {
                             showingTranscriptionTab = false
                         }
                     },
-                    onSelectNoteTab: {
+                    onSelectNoteTab: { _ in
                         withAnimation(.easeInOut(duration: 0.15)) {
                             showingTodoTab = false
                             showingTranscriptionTab = false
@@ -209,33 +196,29 @@ struct ContentView: View {
                             showingTodoTab = false
                         }
                     },
-                    onRequestFloat: { index in
-                        guard index < notes.count else { return }
-                        FloatingNoteWindowController.shared.show(note: notes[index])
+                    onRequestFloat: { id in
+                        if let note = store.note(id) {
+                            FloatingNoteWindowController.shared.show(note: note)
+                        }
                     },
-                    onSetExpiry: { index, date in setExpiry(noteIndex: index, date: date) },
-                    onRequestCustomExpiry: { index in
-                        guard index < notes.count else { return }
-                        expiryNoteID = notes[index].id
-                    },
-                    onMove: moveNote
+                    onSetExpiry: { id, date in store.setExpiry(date, id: id) },
+                    onRequestCustomExpiry: { id in expiryNoteID = id },
+                    onMove: { from, to in store.move(id: from, toPositionOf: to) }
                 )
 
-                noteArea(filteredIndices: currentFilteredIndices, activeIndex: currentActiveIndex)
+                noteArea(visible: visible, activeID: activeID)
                     .frame(maxHeight: .infinity)
 
-                if let current = currentActiveIndex, showEditorToolbar, !showingTodoTab, !showingTranscriptionTab {
+                if let activeID, showEditorToolbar, !showingTodoTab, !showingTranscriptionTab {
                     EditorToolbar(
-                        noteIndex: current,
-                        notes: $notes,
-                        onRequestDelete: { index in
-                            deleteIndex = index
+                        noteID: activeID,
+                        onRequestDelete: { id in
+                            deleteNoteID = id
                             showDeleteAlert = true
                         },
                         onRequestAddNote: { addNote() },
-                        onRequestTogglePin: { index in togglePin(noteIndex: index) },
-                        onRequestToggleLock: toggleLock,
-                        onSave: scheduleSave
+                        onRequestTogglePin: { id in store.togglePin(id: id) },
+                        onRequestToggleLock: { id in toggleLock(noteID: id) }
                     )
                     .padding(.horizontal, 10)
                     .padding(.bottom, 8)
@@ -346,7 +329,7 @@ struct ContentView: View {
     }
 
     @ViewBuilder
-    private func noteArea(filteredIndices: [Int], activeIndex: Int?) -> some View {
+    private func noteArea(visible: [Note], activeID: UUID?) -> some View {
         if showingTodoTab {
             TodoListView(todos: $todoService.todos, hideCompleted: true, onSave: todoService.save)
                 .padding(.horizontal, 12)
@@ -361,31 +344,29 @@ struct ContentView: View {
             .transition(.opacity)
         } else {
             Group {
-                if filteredIndices.isEmpty {
-                    emptyState
-                } else if let current = activeIndex, current < notes.count {
+                if let activeID {
                     NoteEditor(
-                        noteIndex: current,
-                        notes: $notes,
+                        noteID: activeID,
                         unlockedNoteIDs: $unlockedNoteIDs,
-                        showWordCounter: $showWordCounter,
-                        onSave: scheduleSave,
+                        showWordCounter: showWordCounter,
                         onUnlock: unlockNoteFlow,
                         onToggleLock: toggleLock
                     )
                     .padding(.horizontal, 12)
                     .transition(.opacity)
+                } else {
+                    emptyState(isFiltered: !visible.isEmpty || !searchText.isEmpty)
                 }
             }
         }
     }
 
     @ViewBuilder
-    private var emptyState: some View {
+    private func emptyState(isFiltered: Bool) -> some View {
         VStack(spacing: 12) {
             Spacer(minLength: 0)
 
-            if isLoadingNotes {
+            if !store.isLoaded {
                 ProgressView()
                     .scaleEffect(1.2)
                     .padding(.bottom, 4)
@@ -394,6 +375,18 @@ struct ContentView: View {
                 Text("Please wait while your notes are being loaded.")
                     .font(.subheadline)
                     .foregroundColor(.secondary)
+            } else if isFiltered {
+                Image(systemName: "magnifyingglass")
+                    .font(.system(size: 34, weight: .semibold))
+                    .foregroundColor(.secondary)
+                    .padding(.bottom, 4)
+                Text("No matching notes")
+                    .font(.title3.weight(.semibold))
+                Text("No note matches “\(searchText)”.")
+                    .font(.subheadline)
+                    .foregroundColor(.secondary)
+                    .multilineTextAlignment(.center)
+                    .padding(.horizontal, 24)
             } else {
                 Image(systemName: "note.text")
                     .font(.system(size: 34, weight: .semibold))
@@ -424,31 +417,29 @@ struct ContentView: View {
         .transition(.opacity)
     }
 
-    // MARK: - Computed Properties
+    // MARK: - Selection
 
-    private func computeFilteredIndices() -> [Int] {
+    /// The notes the tab bar shows, after the search filter.
+    private var visibleNotes: [Note] {
         let trimmed = searchText.trimmingCharacters(in: .whitespacesAndNewlines)
-        if trimmed.isEmpty {
-            return Array(notes.indices)
-        }
-        let lowercasedQuery = trimmed.lowercased()
-        return notes.indices.filter { index in
-            let note = notes[index]
-            if note.title.lowercased().contains(lowercasedQuery) { return true }
+        guard !trimmed.isEmpty else { return store.notes }
+
+        let query = trimmed.lowercased()
+        return store.notes.filter { note in
+            if note.title.lowercased().contains(query) { return true }
             // Never match on the hidden body of a locked note — that would leak its
             // contents through search. Only search text once it's been unlocked.
             let isReadable = !note.isLocked || unlockedNoteIDs.contains(note.id)
-            return isReadable && note.text.lowercased().contains(lowercasedQuery)
+            return isReadable && note.text.lowercased().contains(query)
         }
     }
 
-    private func recomputeFilteredIndices() {
-        cachedFilteredIndices = computeFilteredIndices()
-    }
-
-    private func activeIndex(from indices: [Int]) -> Int? {
-        if indices.contains(selectedTab) { return selectedTab }
-        return indices.first
+    /// The selected note if it's still visible, otherwise the first visible one.
+    private func activeNoteID(in visible: [Note]) -> UUID? {
+        if let selectedNoteID, visible.contains(where: { $0.id == selectedNoteID }) {
+            return selectedNoteID
+        }
+        return visible.first?.id
     }
 
     // MARK: - Private Methods
@@ -506,77 +497,22 @@ struct ContentView: View {
         .buttonStyle(.plain)
     }
 
-    private func loadNotesIfNeeded() {
-        guard isLoadingNotes else { return }
-
-        DispatchQueue.global(qos: .userInitiated).async {
-            if let loaded = notesService.loadNotes() {
-                DispatchQueue.main.async {
-                    self.notes = loaded
-                    self.isLoadingNotes = false
-                    self.handlePendingNoteSelection()
-                }
-            } else {
-                DispatchQueue.main.async { self.isLoadingNotes = false }
-            }
-        }
-    }
-
     private func handlePendingNoteSelection() {
-        guard let noteIDToOpen = searchManager.noteIDToOpen,
-              let index = notes.firstIndex(where: { $0.id == noteIDToOpen }) else { return }
+        guard let pending = searchManager.noteIDToOpen, store.contains(pending) else { return }
         searchText = ""
         isSearching = false
-        selectedTab = index
+        selectedNoteID = pending
         searchManager.noteIDToOpen = nil
     }
 
     private func handleSearchResultSelection(_ noteID: UUID?) {
-        guard let noteID = noteID, !isLoadingNotes else { return }
-        guard let index = notes.firstIndex(where: { $0.id == noteID }) else { return }
+        guard let noteID, store.contains(noteID) else { return }
         searchText = ""
         isSearching = false
         showingTodoTab = false
-        withAnimation { selectedTab = index }
+        showingTranscriptionTab = false
+        withAnimation { selectedNoteID = noteID }
         searchManager.noteIDToOpen = nil
-    }
-
-    private func scheduleSave() {
-        let currentFilteredIndices = cachedFilteredIndices
-        if let current = activeIndex(from: currentFilteredIndices) {
-            notes[current].updateModifiedDate()
-            notes[current].captureVersionIfNeeded()
-        }
-
-        let notesSnapshot = notes
-        pendingSaveWorkItem?.cancel()
-        isSaving = true
-
-        let work = DispatchWorkItem {
-            DispatchQueue.global(qos: .utility).async {
-                self.notesService.saveNotes(notesSnapshot)
-                DispatchQueue.main.async {
-                    NoteSearchService.shared.indexNotes(with: notesSnapshot)
-                }
-                DispatchQueue.main.async {
-                    self.lastSavedAt = Date()
-                    self.savingStatusTimer?.invalidate()
-                    self.savingStatusTimer = Timer.scheduledTimer(withTimeInterval: 0.5, repeats: false) { _ in
-                        self.isSaving = false
-                    }
-                }
-            }
-        }
-
-        pendingSaveWorkItem = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.5, execute: work)
-    }
-
-    private func saveNotes() {
-        let snapshot = notes
-        DispatchQueue.global(qos: .utility).async {
-            self.notesService.saveNotes(snapshot)
-        }
     }
 
     private func addNote() {
@@ -584,86 +520,40 @@ struct ContentView: View {
     }
 
     private func addNote(withText text: String) {
-        pendingSaveWorkItem?.cancel()
-        pendingSaveWorkItem = nil
-
-        let nextNumber = (1...).first { n in !notes.contains { $0.title == "Note \(n)" } } ?? (notes.count + 1)
-        var newNote = Note(title: "Note \(nextNumber)", text: text)
-        newNote.updateModifiedDate()
-
+        let note = store.addNote(text: text)
         withAnimation(.easeInOut(duration: 0.2)) {
-            notes.append(newNote)
-            selectedTab = notes.count - 1
+            selectedNoteID = note.id
             showingTodoTab = false
             showingTranscriptionTab = false
         }
-        saveNotes()
-        NoteSearchService.shared.indexNotes(with: notes)
     }
 
-    private func setExpiry(noteIndex: Int, date: Date?) {
-        guard noteIndex < notes.count else { return }
-        notes[noteIndex].expiryDate = date
-        scheduleSave()
-    }
-
-    private func reloadNotesFromDisk() {
-        guard let loaded = notesService.loadNotes() else { return }
-        let selectedID = activeIndex(from: cachedFilteredIndices).flatMap { idx -> UUID? in
-            idx < notes.count ? notes[idx].id : nil
+    private func deleteNote(id: UUID) {
+        // Pick the neighbour to select *before* removing, so the editor never has
+        // to fall back to "nothing selected" for a frame.
+        let index = store.index(of: id)
+        store.delete(id: id)
+        if selectedNoteID == id || selectedNoteID == nil {
+            if let index {
+                let next = min(index, store.notes.count - 1)
+                selectedNoteID = next >= 0 ? store.notes[next].id : nil
+            } else {
+                selectedNoteID = store.notes.first?.id
+            }
         }
-        notes = loaded
-        if let selectedID, let newIndex = loaded.firstIndex(where: { $0.id == selectedID }) {
-            selectedTab = newIndex
-        } else {
-            selectedTab = max(0, min(selectedTab, loaded.count - 1))
-        }
-        recomputeFilteredIndices()
+        unlockedNoteIDs.remove(id)
+        relockWorkItems[id]?.cancel()
+        relockWorkItems[id] = nil
     }
 
-    private func togglePin(noteIndex: Int) {
-        let wasPinned = notes[noteIndex].isPinned
-        notes[noteIndex].isPinned.toggle()
-        if !wasPinned {
-            notes.move(fromOffsets: IndexSet(integer: noteIndex), toOffset: 0)
-            if selectedTab == noteIndex { selectedTab = 0 }
-            else if selectedTab < noteIndex { selectedTab += 1 }
-        }
-        scheduleSave()
-    }
-
-    private func moveNote(from: Int, to: Int) {
-        notes.move(fromOffsets: IndexSet(integer: from), toOffset: to > from ? to + 1 : to)
-        if selectedTab == from {
-            selectedTab = to
-        } else if from < to, selectedTab > from, selectedTab <= to {
-            selectedTab -= 1
-        } else if from > to, selectedTab >= to, selectedTab < from {
-            selectedTab += 1
-        }
-        scheduleSave()
-    }
-
-    private func deleteNote(at index: Int) {
-        // Cancel any pending debounced save so it can't overwrite with a stale snapshot.
-        pendingSaveWorkItem?.cancel()
-        pendingSaveWorkItem = nil
-
-        notes.remove(at: index)
-        selectedTab = max(0, min(selectedTab, notes.count - 1))
-        saveNotes()
-        NoteSearchService.shared.indexNotes(with: notes)
-    }
-
-    private func unlockNoteFlow(noteIndex: Int) {
-        let note = notes[noteIndex]
-        guard note.isLocked else { return }
+    private func unlockNoteFlow(noteID: UUID) {
+        guard let note = store.note(noteID), note.isLocked else { return }
         Task { @MainActor in
             let authenticated = await AuthenticationService.shared.authenticate(reason: "Unlock \"\(note.title)\"")
             if authenticated {
-                unlockedNoteIDs.insert(note.id)
+                unlockedNoteIDs.insert(noteID)
                 if settingsService.settings.noteRelockMode == "timer" {
-                    scheduleTimerRelock(for: note.id)
+                    scheduleTimerRelock(for: noteID)
                 }
             }
         }
@@ -696,24 +586,22 @@ struct ContentView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + Double(minutes) * 60, execute: work)
     }
 
-    private func toggleLock(noteIndex: Int) {
-        let note = notes[noteIndex]
+    private func toggleLock(noteID: UUID) {
+        guard let note = store.note(noteID) else { return }
         if note.isLocked {
             Task { @MainActor in
                 let authenticated = await AuthenticationService.shared.authenticate(reason: "Remove lock from \"\(note.title)\"")
                 if authenticated {
-                    notes[noteIndex].isLocked = false
-                    unlockedNoteIDs.remove(note.id)
-                    scheduleSave()
+                    store.setLocked(false, id: noteID)
+                    unlockedNoteIDs.remove(noteID)
                 }
             }
         } else {
             Task { @MainActor in
                 let configured = await AuthenticationService.shared.ensurePasswordOrBiometricsConfigured()
                 if configured {
-                    notes[noteIndex].isLocked = true
-                    unlockedNoteIDs.remove(note.id)
-                    scheduleSave()
+                    store.setLocked(true, id: noteID)
+                    unlockedNoteIDs.remove(noteID)
                 }
             }
         }

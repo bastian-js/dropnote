@@ -459,8 +459,9 @@ struct SettingsView: View {
     // MARK: - Danger Actions
 
     private func performDeleteNotes() {
-        NotesFileService.shared.saveNotes([])
-        NoteSearchService.shared.indexNotes(with: [])
+        // Goes through the store so every open window drops the notes too, instead
+        // of keeping a stale in-memory copy that the next save would restore.
+        NotesStore.shared.deleteAll()
         NotificationCenter.default.post(name: Notification.Name("NotesWiped"), object: nil)
     }
 
