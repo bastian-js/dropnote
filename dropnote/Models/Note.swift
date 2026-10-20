@@ -20,8 +20,20 @@ struct Note: Codable, Identifiable, Equatable {
     var expiryDate: Date?
     /// Local version history, most recent last. Capped at `maxVersions`.
     var versions: [NoteVersion] = []
+    /// Encrypted body (text, rich text, history) of a locked note, as stored on disk.
+    /// While set, `text`/`attributedTextRTF`/`versions` are empty: the note hasn't been
+    /// decrypted yet. `NotesStore.unseal(id:)` opens it after authentication.
+    var sealedContent: Data?
 
     static let maxVersions = 10
+
+    /// True while the body is still encrypted and therefore not readable.
+    var isSealed: Bool { sealedContent != nil }
+
+    /// Whether the content must stay hidden in a view that has unlocked `unlockedIDs`.
+    func isHidden(unlockedIDs: Set<UUID>) -> Bool {
+        isSealed || (isLocked && !unlockedIDs.contains(id))
+    }
 
     mutating func updateModifiedDate() {
         lastModified = Date()
@@ -45,7 +57,7 @@ struct Note: Codable, Identifiable, Equatable {
     }
 
     enum CodingKeys: String, CodingKey {
-        case id, title, text, isPinned, isLocked, attributedTextRTF, lastModified, expiryDate, versions
+        case id, title, text, isPinned, isLocked, attributedTextRTF, lastModified, expiryDate, versions, sealedContent
     }
 
     init(id: UUID = UUID(),
@@ -56,7 +68,8 @@ struct Note: Codable, Identifiable, Equatable {
          attributedTextRTF: Data? = nil,
          lastModified: Date? = nil,
          expiryDate: Date? = nil,
-         versions: [NoteVersion] = []) {
+         versions: [NoteVersion] = [],
+         sealedContent: Data? = nil) {
         self.id = id
         self.title = title
         self.text = text
@@ -66,6 +79,7 @@ struct Note: Codable, Identifiable, Equatable {
         self.lastModified = lastModified
         self.expiryDate = expiryDate
         self.versions = versions
+        self.sealedContent = sealedContent
     }
 
     // Backward-compatible decoding: new fields default when missing.
@@ -80,5 +94,6 @@ struct Note: Codable, Identifiable, Equatable {
         lastModified      = try c.decodeIfPresent(Date.self,           forKey: .lastModified)
         expiryDate        = try c.decodeIfPresent(Date.self,           forKey: .expiryDate)
         versions          = try c.decodeIfPresent([NoteVersion].self,  forKey: .versions) ?? []
+        sealedContent     = try c.decodeIfPresent(Data.self,           forKey: .sealedContent)
     }
 }

@@ -212,6 +212,7 @@ struct ContentView: View {
                 if let activeID, showEditorToolbar, !showingTodoTab, !showingTranscriptionTab {
                     EditorToolbar(
                         noteID: activeID,
+                        isContentHidden: store.note(activeID)?.isHidden(unlockedIDs: unlockedNoteIDs) ?? false,
                         onRequestDelete: { id in
                             deleteNoteID = id
                             showDeleteAlert = true
@@ -429,8 +430,7 @@ struct ContentView: View {
             if note.title.lowercased().contains(query) { return true }
             // Never match on the hidden body of a locked note — that would leak its
             // contents through search. Only search text once it's been unlocked.
-            let isReadable = !note.isLocked || unlockedNoteIDs.contains(note.id)
-            return isReadable && note.text.lowercased().contains(query)
+            return !note.isHidden(unlockedIDs: unlockedNoteIDs) && note.text.lowercased().contains(query)
         }
     }
 
@@ -549,7 +549,7 @@ struct ContentView: View {
     private func unlockNoteFlow(noteID: UUID) {
         guard let note = store.note(noteID), note.isLocked else { return }
         Task { @MainActor in
-            let authenticated = await AuthenticationService.shared.authenticate(reason: "Unlock \"\(note.title)\"")
+            let authenticated = await AuthenticationService.shared.unlock(noteID: noteID, reason: "Unlock \"\(note.title)\"")
             if authenticated {
                 unlockedNoteIDs.insert(noteID)
                 if settingsService.settings.noteRelockMode == "timer" {
@@ -590,7 +590,7 @@ struct ContentView: View {
         guard let note = store.note(noteID) else { return }
         if note.isLocked {
             Task { @MainActor in
-                let authenticated = await AuthenticationService.shared.authenticate(reason: "Remove lock from \"\(note.title)\"")
+                let authenticated = await AuthenticationService.shared.unlock(noteID: noteID, reason: "Remove lock from \"\(note.title)\"")
                 if authenticated {
                     store.setLocked(false, id: noteID)
                     unlockedNoteIDs.remove(noteID)

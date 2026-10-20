@@ -15,6 +15,9 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     private var cancellables = Set<AnyCancellable>()
     private weak var todoBadgeView: NSView?
     private(set) var isHoldingPopoverForAuth = false
+    /// Bumped by every `beginAuthenticationHold()`, so a late focus retry from an
+    /// earlier prompt can't release the hold of a newer one.
+    private var authHoldGeneration = 0
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppDelegate.shared = self
@@ -254,21 +257,58 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// Prevents the transient popover from auto-closing while a system auth prompt
     /// steals activation. Pair every call with `endAuthenticationHold()`.
     func beginAuthenticationHold() {
+        authHoldGeneration += 1
         isHoldingPopoverForAuth = true
         popover?.behavior = .applicationDefined
     }
 
+    /// The system prompt can keep key focus for a moment after authentication
+    /// returns — always after "Use Password". Grabbing focus right then fails
+    /// ("KEYFOCUS: FAULT … coreautha has focus"), activation lands elsewhere, and
+    /// releasing the hold at that point closed the popover. So the hold stays on
+    /// until the popover is key again, or a short timeout passes.
     func endAuthenticationHold() {
-        isHoldingPopoverForAuth = false
-        popover?.behavior = .transient
-        // Bring the popover back to the front and refocus so the note is usable at once.
+        let generation = authHoldGeneration
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            self.reclaimFocusAfterAuth(generation: generation, attemptsLeft: 10)
+        }
+    }
+
+    private func reclaimFocusAfterAuth(generation: Int, attemptsLeft: Int) {
+        // A new prompt started in the meantime; it owns the hold now.
+        guard generation == authHoldGeneration else { return }
+
         guard popover?.isShown == true,
-              let window = popover?.contentViewController?.view.window else { return }
+              let window = popover?.contentViewController?.view.window else {
+            releaseAuthenticationHold()
+            return
+        }
+
+        if NSApp.isActive && window.isKeyWindow {
+            // Refocus the editor so the note is usable at once.
+            if let tv = NSTextView.findInWindow(window) {
+                window.makeFirstResponder(tv)
+            }
+            releaseAuthenticationHold()
+            return
+        }
+
+        // Give up after ~1.5 s; the popover then stays open until the next click outside.
+        guard attemptsLeft > 0 else {
+            releaseAuthenticationHold()
+            return
+        }
+
         NSApp.activate(ignoringOtherApps: true)
         window.makeKey()
-        if let tv = NSTextView.findInWindow(window) {
-            window.makeFirstResponder(tv)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+            self.reclaimFocusAfterAuth(generation: generation, attemptsLeft: attemptsLeft - 1)
         }
+    }
+
+    private func releaseAuthenticationHold() {
+        isHoldingPopoverForAuth = false
+        popover?.behavior = .transient
     }
 
     @objc private func handleAppDidResignActive() {

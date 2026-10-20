@@ -329,7 +329,7 @@ struct FullWindowView: View {
         guard let note = store.note(noteId) else { return }
         if note.isLocked {
             Task { @MainActor in
-                let ok = await AuthenticationService.shared.authenticate(reason: "Remove lock from \"\(note.title)\"")
+                let ok = await AuthenticationService.shared.unlock(noteID: noteId, reason: "Remove lock from \"\(note.title)\"")
                 if ok {
                     store.setLocked(false, id: noteId)
                     unlockedNoteIDs.remove(noteId)
@@ -349,7 +349,7 @@ struct FullWindowView: View {
     private func unlockNote(noteId: UUID) {
         guard let note = store.note(noteId) else { return }
         Task { @MainActor in
-            let ok = await AuthenticationService.shared.authenticate(reason: "Unlock \"\(note.title)\"")
+            let ok = await AuthenticationService.shared.unlock(noteID: noteId, reason: "Unlock \"\(note.title)\"")
             if ok { unlockedNoteIDs.insert(noteId) }
         }
     }
@@ -580,7 +580,8 @@ struct FullWindowSidebar: View {
                     .font(.system(size: 12.5, weight: isSelected ? .semibold : .medium))
                     .foregroundColor(isSelected ? .accentColor : .primary)
                     .lineLimit(1)
-                if !note.text.isEmpty {
+                // A locked note's body must not leak through the preview line.
+                if !note.isLocked, !note.text.isEmpty {
                     Text(note.text)
                         .font(.system(size: 11))
                         .foregroundColor(.secondary.opacity(0.65))
@@ -675,6 +676,7 @@ struct FullWindowSidebar: View {
 
 struct FullWindowEditor: View {
     let noteID: UUID
+    @ObservedObject var store: NotesStore = .shared
     @Binding var unlockedNoteIDs: Set<UUID>
     let showWordCounter: Bool
     let onAddNote: () -> Void
@@ -698,6 +700,7 @@ struct FullWindowEditor: View {
 
             EditorToolbar(
                 noteID: noteID,
+                isContentHidden: store.note(noteID)?.isHidden(unlockedIDs: unlockedNoteIDs) ?? false,
                 onRequestDelete: { _ in onDelete() },
                 onRequestAddNote: onAddNote,
                 onRequestTogglePin: { _ in onTogglePin() },

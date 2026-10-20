@@ -143,8 +143,23 @@ final class NotesStore: ObservableObject {
         update(id: id) { $0.expiryDate = date }
     }
 
+    /// Removing the lock only works on a decrypted note — call `unseal(id:)` first.
     func setLocked(_ locked: Bool, id: UUID) {
-        update(id: id) { $0.isLocked = locked }
+        update(id: id) { note in
+            guard locked || !note.isSealed else { return }
+            note.isLocked = locked
+        }
+    }
+
+    /// Decrypts a locked note's body into memory. Only call this after the user
+    /// authenticated. Returns false if it can't be decrypted (e.g. the key is gone
+    /// from the Keychain); the ciphertext is then kept untouched.
+    func unseal(id: UUID) -> Bool {
+        guard let i = index(of: id) else { return false }
+        guard notes[i].isSealed else { return true }
+        guard let opened = try? NoteCrypto.shared.opened(notes[i]) else { return false }
+        notes[i] = opened
+        return true
     }
 
     /// Appends a new note and returns it. The caller selects it by `id`.

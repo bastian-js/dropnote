@@ -6,6 +6,8 @@ import SwiftUI
 /// in the popover and the full window as they are typed.
 struct FloatingNoteView: View {
     let noteID: UUID
+    /// Whether the user authenticated for this note before it was floated.
+    let isUnlocked: Bool
     @ObservedObject private var store = NotesStore.shared
 
     let onClose: () -> Void
@@ -16,8 +18,9 @@ struct FloatingNoteView: View {
     private var note: Note? { store.note(noteID) }
     private var title: String { note?.title ?? "" }
 
-    init(note: Note, onClose: @escaping () -> Void) {
+    init(note: Note, isUnlocked: Bool, onClose: @escaping () -> Void) {
         self.noteID = note.id
+        self.isUnlocked = isUnlocked
         self.onClose = onClose
     }
 
@@ -99,7 +102,10 @@ struct FloatingNoteView: View {
 
     @ViewBuilder
     private var noteContent: some View {
-        if let note {
+        if let note, note.isHidden(unlockedIDs: isUnlocked ? [noteID] : []) {
+            // Locked after it was floated: stop showing the content.
+            placeholder(icon: "lock.fill", message: "This note is locked.")
+        } else if let note {
             RichTextEditor(
                 contentID: note.id,
                 text: note.text,
@@ -111,20 +117,25 @@ struct FloatingNoteView: View {
             .frame(minWidth: 200, minHeight: 120)
         } else {
             // The note was deleted or self-destructed while floating.
-            VStack(spacing: 8) {
-                Image(systemName: "trash")
-                    .font(.system(size: 20))
-                    .foregroundColor(.secondary.opacity(0.5))
-                Text("This note no longer exists.")
-                    .font(.system(size: 12))
-                    .foregroundColor(.secondary)
-                Button("Close", action: onClose)
-                    .buttonStyle(.plain)
-                    .font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(.accentColor)
-            }
-            .frame(minWidth: 200, minHeight: 120)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            placeholder(icon: "trash", message: "This note no longer exists.")
         }
+    }
+
+    @ViewBuilder
+    private func placeholder(icon: String, message: String) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: icon)
+                .font(.system(size: 20))
+                .foregroundColor(.secondary.opacity(0.5))
+            Text(message)
+                .font(.system(size: 12))
+                .foregroundColor(.secondary)
+            Button("Close", action: onClose)
+                .buttonStyle(.plain)
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundColor(.accentColor)
+        }
+        .frame(minWidth: 200, minHeight: 120)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }

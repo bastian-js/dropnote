@@ -117,18 +117,23 @@ struct NoteEditor: View {
 
     @ViewBuilder
     private var lockedView: some View {
+        // A short popover — many notes add a scrollbar under the tabs — can't fit
+        // the full layout. Step down to smaller ones instead of overflowing and
+        // getting clipped at the top and bottom.
+        ViewThatFits(in: .vertical) {
+            regularLockedLayout
+            compactLockedLayout
+            minimalLockedLayout
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    @ViewBuilder
+    private var regularLockedLayout: some View {
         VStack(spacing: 20) {
             Spacer()
 
-            // Custom padlock icon — opens in place when the note is unlocked.
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.85))
-                    .frame(width: 84, height: 84)
-                    .shadow(color: Color.accentColor.opacity(0.3), radius: 12, x: 0, y: 6)
-                    .scaleEffect(lockOpen ? 1.05 : 1.0)
-                PadlockIcon(isOpen: lockOpen)
-            }
+            padlockBadge(size: 84)
 
             // Locked Text
             VStack(spacing: 8) {
@@ -146,39 +151,85 @@ struct NoteEditor: View {
 
             Spacer()
 
-            // Unlock Button
-            Button {
-                onUnlock(noteID)
-            } label: {
-                HStack(spacing: 8) {
-                    Image(systemName: "lock.open.fill")
-                        .font(.system(size: 14, weight: .semibold))
-                    Text("Unlock Note")
-                        .font(.system(size: 14, weight: .semibold))
-                }
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 12)
-                .background(
-                    RoundedRectangle(cornerRadius: 10)
-                        .fill(Color.accentColor)
-                )
-                .foregroundColor(.white)
-            }
-            .buttonStyle(PlainButtonStyle())
-            .keyboardShortcut(.defaultAction)
-            .padding(.horizontal, 20)
+            unlockButton(verticalPadding: 12)
+                .padding(.horizontal, 20)
 
             Spacer()
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
         .padding(24)
+    }
+
+    @ViewBuilder
+    private var compactLockedLayout: some View {
+        VStack(spacing: 0) {
+            Spacer(minLength: 4)
+            padlockBadge(size: 46)
+            Text("This note is locked")
+                .font(.system(size: 15, weight: .semibold))
+                .padding(.top, 8)
+            Spacer(minLength: 8)
+            unlockButton(verticalPadding: 8)
+            Spacer(minLength: 4)
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder
+    private var minimalLockedLayout: some View {
+        HStack(spacing: 10) {
+            padlockBadge(size: 30)
+            Text("Locked")
+                .font(.system(size: 13, weight: .semibold))
+            unlockButton(verticalPadding: 6)
+        }
+        .padding(.horizontal, 12)
+    }
+
+    /// Custom padlock icon — opens in place when the note is unlocked. Drawn at
+    /// 84pt and scaled, so every layout shares the same animation.
+    @ViewBuilder
+    private func padlockBadge(size: CGFloat) -> some View {
+        ZStack {
+            Circle()
+                .fill(Color.accentColor.opacity(0.85))
+                .frame(width: 84, height: 84)
+                .shadow(color: Color.accentColor.opacity(0.3), radius: 12, x: 0, y: 6)
+                .scaleEffect(lockOpen ? 1.05 : 1.0)
+            PadlockIcon(isOpen: lockOpen)
+        }
+        .scaleEffect(size / 84)
+        .frame(width: size, height: size)
+    }
+
+    @ViewBuilder
+    private func unlockButton(verticalPadding: CGFloat) -> some View {
+        Button {
+            onUnlock(noteID)
+        } label: {
+            HStack(spacing: 8) {
+                Image(systemName: "lock.open.fill")
+                    .font(.system(size: 14, weight: .semibold))
+                Text("Unlock Note")
+                    .font(.system(size: 14, weight: .semibold))
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.vertical, verticalPadding)
+            .background(
+                RoundedRectangle(cornerRadius: 10)
+                    .fill(Color.accentColor)
+            )
+            .foregroundColor(.white)
+        }
+        .buttonStyle(PlainButtonStyle())
+        .keyboardShortcut(.defaultAction)
     }
 
     // MARK: - Computed Properties
 
     private var isNoteLocked: Bool {
         guard let note else { return false }
-        return note.isLocked && !unlockedNoteIDs.contains(note.id)
+        return note.isHidden(unlockedIDs: unlockedNoteIDs)
     }
 
     // MARK: - Private Methods

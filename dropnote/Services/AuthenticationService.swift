@@ -40,26 +40,53 @@ final class AuthenticationService {
         var error: NSError?
         
         if context.canEvaluatePolicy(.deviceOwnerAuthentication, error: &error) {
-            do {
-                return try await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)
-            } catch {
-                // Fall through to password authentication
-            }
+            // The system sheet already falls back to the login password, so its
+            // answer is final. Cancelling or failing must never drop through to the
+            // app-password path below.
+            return (try? await context.evaluatePolicy(.deviceOwnerAuthentication, localizedReason: reason)) ?? false
         }
-        
+
         guard let existingPassword = getPassword() else {
-            return await promptAndSetPassword(
-                title: "Set Password",
-                message: "Set an app password to unlock locked notes."
+            // Nothing to verify against. Offering to set a password here would let
+            // whoever is at the keyboard pick one and unlock the note.
+            showAlert(
+                title: "Can't Unlock",
+                message: "No unlock method is available. Set up Touch ID or a login password in System Settings."
             )
+            return false
         }
-        
+
         let enteredPassword = promptForSecureText(title: "Enter Password", message: reason)
         return enteredPassword == existingPassword
     }
-    
+
+    /// Authenticates, then decrypts the note's body into memory. Every way of
+    /// revealing a locked note's content goes through here.
+    @MainActor
+    func unlock(noteID: UUID, reason: String) async -> Bool {
+        guard await authenticate(reason: reason) else { return false }
+        guard NotesStore.shared.unseal(id: noteID) else {
+            showAlert(
+                title: "Can't Decrypt Note",
+                message: "The encryption key for locked notes couldn't be read from your Keychain. The note's encrypted content has been left unchanged."
+            )
+            return false
+        }
+        return true
+    }
+
     // MARK: - Private Methods
-    
+
+    @MainActor
+    private func showAlert(title: String, message: String) {
+        let alert = NSAlert()
+        alert.messageText = title
+        alert.informativeText = message
+        alert.alertStyle = .warning
+        alert.addButton(withTitle: "OK")
+        alert.runModal()
+    }
+
     @MainActor
     private func promptAndSetPassword(title: String, message: String) -> Bool {
         let password1 = promptForSecureText(title: title, message: message + "\n\nPassword:")

@@ -5,6 +5,8 @@ import PDFKit
 struct EditorToolbar: View {
     let noteID: UUID
     @ObservedObject var store: NotesStore = .shared
+    /// The note is locked and not unlocked here: history and export would reveal it.
+    var isContentHidden: Bool = false
     var onRequestDelete: (UUID) -> Void
     var onRequestAddNote: () -> Void
     var onRequestTogglePin: (UUID) -> Void
@@ -25,7 +27,9 @@ struct EditorToolbar: View {
                 pinNoteButton(note: note)
                 lockNoteButton(note: note)
                 historyButton
+                    .disabled(isContentHidden)
                 exportMenu(note: note)
+                    .disabled(isContentHidden)
             }
 
             Spacer(minLength: 0)
